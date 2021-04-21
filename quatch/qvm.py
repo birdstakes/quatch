@@ -27,7 +27,7 @@ from .instructions import assemble, disassemble, Instruction as Ins, Opcode as O
 from .util import pad
 
 
-class InitSymbolNotFoundError(Exception):
+class InitSymbolError(Exception):
     pass
 
 
@@ -187,18 +187,20 @@ class Qvm:
         if len(self.new_data) == 0:
             return
 
-        original_init = (
-            self.symbols.get("G_InitGame")
-            or self.symbols.get("CG_Init")
-            or self.symbols.get("UI_Init")
-        )
+        for init_name in ("G_InitGame", "CG_Init", "UI_Init"):
+            original_init = self.symbols.get(init_name)
+            if original_init is not None:
+                break
+
         if original_init is None:
-            raise InitSymbolNotFoundError(
+            raise InitSymbolError(
                 "Cannot find a symbol for G_InitGame, CG_Init, or UI_Init"
             )
 
-        # check original_init's callsite in case it has already been hooked
-        assert len(self.calls[original_init]) == 1
+        if len(self.calls[original_init]) == 0:
+            raise InitSymbolError(f"{init_name} is never called")
+
+        # check original_init's first callsite in case it has already been hooked
         original_init_call = self.calls[original_init][0]
         current_init = self.instructions[original_init_call].operand
 
@@ -237,7 +239,7 @@ class Qvm:
             ]
         )
 
-        self.replace_calls(original_init, init_wrapper)
+        self.instructions[original_init_call].operand = init_wrapper
 
     def replace_calls(self, old, new):
         if not isinstance(old, int):
