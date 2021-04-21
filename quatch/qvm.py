@@ -51,6 +51,8 @@ class Qvm:
                 self.bss_length,
             ) = struct.unpack(format, raw_header)
 
+            self.bss_end = self.data_length + self.lit_length + self.bss_length
+
             f.seek(code_offset)
             self.instructions = disassemble(f.read(code_length))
 
@@ -103,12 +105,12 @@ class Qvm:
 
     def add_data(self, data, align=4):
         self.new_data = pad(self.new_data, align)
-        offset = len(self.new_data)
+        address = self.bss_end + len(self.new_data)
         self.new_data.extend(data)
-        return offset
+        return address
 
     def add_string(self, string):
-        self.add_data(string.encode() + b"\0", align=1)
+        return self.add_data(string.encode() + b"\0", align=1)
 
     def add_code(self, instructions):
         address = len(self.instructions)
