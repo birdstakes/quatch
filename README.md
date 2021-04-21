@@ -4,9 +4,21 @@ Quatch is a Python library for patching Quake 3 virtual machine programs.
 
 ## Installation
 
+Users:
+
 ```bash
 git clone https://github.com/birdstakes/quatch.git
-pip install -e ./quatch
+pip install ./quatch
+```
+
+Developers:
+
+```bash
+git clone https://github.com/birdstakes/quatch.git
+cd quatch
+pip install -e .
+pip install pre-commit
+pre-commit install
 ```
 
 ## Usage
