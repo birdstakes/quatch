@@ -17,7 +17,6 @@
 
 import enum
 import io
-import struct
 
 
 class Opcode(enum.IntEnum):

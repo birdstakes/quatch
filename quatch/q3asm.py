@@ -164,6 +164,7 @@ class Assembler:
     def parse_expression(self, expr):
         start = 0
         last_op = None
+        value = 0
         for i in range(len(expr) + 1):
             if i == len(expr) or expr[i] == "+" or (expr[i] == "-" and i > 0):
                 end = i
@@ -190,7 +191,7 @@ class Assembler:
             self.current_segment = segment
             if self.pass_number == 0:
                 self.last_symbol.segment = self.current_segment
-                self.last_symbol.value = len(current_segment.image)
+                self.last_symbol.value = len(self.current_segment.image)
 
     def assemble(self, input_files, code_base=0, data_base=0, symbols={}):
         self.segments = {name: Segment() for name in ("code", "data", "lit", "bss")}
@@ -269,7 +270,7 @@ class Assembler:
             if len(tokens) >= 2 and opcode not in (Op.CVIF, Op.CVFI):
                 operand = self.parse_expression(tokens[1])
                 if opcode == Op.BLOCK_COPY:
-                    operand = align(expression, 4)
+                    operand = align(operand, 4)
             else:
                 operand = None
 
@@ -313,7 +314,7 @@ class Assembler:
         elif tokens[0] == "address":
             value = self.parse_expression(tokens[1])
             self.hack_to_segment(self.segments["data"])
-            emit_int(self.current_segment, value)
+            self.current_segment.image += value.to_bytes(4, "little")
 
         elif tokens[0] in self.segments:
             self.current_segment = self.segments[tokens[0]]
