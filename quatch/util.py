@@ -15,9 +15,10 @@
 # You should have received a copy of the GNU General Public License
 # along with Quatch; If not, see <https://www.gnu.org/licenses/>.
 
+
 def align(n, alignment):
     return n + (alignment - (n % alignment)) % alignment
 
 
-def pad(data, alignment, padding=b'\0'):
+def pad(data, alignment, padding=b"\0"):
     return data + padding * (align(len(data), alignment) - len(data))

@@ -102,19 +102,19 @@ class Instruction:
         self.operand_size = operand_sizes[opcode]
 
         if self.operand_size != 0 and operand is None:
-            raise TypeError(f'{opcode.name} requires an operand')
+            raise TypeError(f"{opcode.name} requires an operand")
 
     def __repr__(self):
         if self.operand_size != 0:
-            return f'{self.opcode.name} {self.operand:#x}'
+            return f"{self.opcode.name} {self.operand:#x}"
         else:
-            return f'{self.opcode.name}'
+            return f"{self.opcode.name}"
 
     def assemble(self):
-        code = self.opcode.to_bytes(1, 'little')
+        code = self.opcode.to_bytes(1, "little")
         if self.operand is not None:
             code += self.operand.to_bytes(
-                self.operand_size, 'little', signed=self.operand < 0
+                self.operand_size, "little", signed=self.operand < 0
             )
         return code
 
@@ -132,15 +132,13 @@ def disassemble(code):
 
     while True:
         byte = code.read(1)
-        if byte == b'':
+        if byte == b"":
             break
 
-        opcode = Opcode(int.from_bytes(byte, 'little'))
+        opcode = Opcode(int.from_bytes(byte, "little"))
 
         if operand_sizes[opcode] != 0:
-            operand = int.from_bytes(
-                code.read(operand_sizes[opcode]), 'little'
-            )
+            operand = int.from_bytes(code.read(operand_sizes[opcode]), "little")
         else:
             operand = None
 

@@ -20,101 +20,101 @@ from .instructions import Instruction as Ins, Opcode as Op
 from .util import align, pad
 
 opcode_map = {
-    'BREAK': Op.BREAK,
-    'CNSTF4': Op.CONST,
-    'CNSTI4': Op.CONST,
-    'CNSTP4': Op.CONST,
-    'CNSTU4': Op.CONST,
-    'CNSTI2': Op.CONST,
-    'CNSTU2': Op.CONST,
-    'CNSTI1': Op.CONST,
-    'CNSTU1': Op.CONST,
-    'ASGNB': Op.BLOCK_COPY,
-    'ASGNF4': Op.STORE4,
-    'ASGNI4': Op.STORE4,
-    'ASGNP4': Op.STORE4,
-    'ASGNU4': Op.STORE4,
-    'ASGNI2': Op.STORE2,
-    'ASGNU2': Op.STORE2,
-    'ASGNI1': Op.STORE1,
-    'ASGNU1': Op.STORE1,
-    'INDIRB': Op.IGNORE,
-    'INDIRF4': Op.LOAD4,
-    'INDIRI4': Op.LOAD4,
-    'INDIRP4': Op.LOAD4,
-    'INDIRU4': Op.LOAD4,
-    'INDIRI2': Op.LOAD2,
-    'INDIRU2': Op.LOAD2,
-    'INDIRI1': Op.LOAD1,
-    'INDIRU1': Op.LOAD1,
-    'CVFF4': Op.UNDEF,
-    'CVFI4': Op.CVFI,
-    'CVIF4': Op.CVIF,
-    'CVII4': Op.SEX8,
-    'CVII1': Op.IGNORE,
-    'CVII2': Op.IGNORE,
-    'CVIU4': Op.IGNORE,
-    'CVPU4': Op.IGNORE,
-    'CVUI4': Op.IGNORE,
-    'CVUP4': Op.IGNORE,
-    'CVUU4': Op.IGNORE,
-    'CVUU1': Op.IGNORE,
-    'NEGF4': Op.NEGF,
-    'NEGI4': Op.NEGI,
-    'ADDRGP4': Op.CONST,
-    'ADDF4': Op.ADDF,
-    'ADDI4': Op.ADD,
-    'ADDP4': Op.ADD,
-    'ADDP': Op.ADD,
-    'ADDU4': Op.ADD,
-    'SUBF4': Op.SUBF,
-    'SUBI4': Op.SUB,
-    'SUBP4': Op.SUB,
-    'SUBU4': Op.SUB,
-    'LSHI4': Op.LSH,
-    'LSHU4': Op.LSH,
-    'MODI4': Op.MODI,
-    'MODU4': Op.MODU,
-    'RSHI4': Op.RSHI,
-    'RSHU4': Op.RSHU,
-    'BANDI4': Op.BAND,
-    'BANDU4': Op.BAND,
-    'BCOMI4': Op.BCOM,
-    'BCOMU4': Op.BCOM,
-    'BORI4': Op.BOR,
-    'BORU4': Op.BOR,
-    'BXORI4': Op.BXOR,
-    'BXORU4': Op.BXOR,
-    'DIVF4': Op.DIVF,
-    'DIVI4': Op.DIVI,
-    'DIVU4': Op.DIVU,
-    'MULF4': Op.MULF,
-    'MULI4': Op.MULI,
-    'MULU4': Op.MULU,
-    'EQF4': Op.EQF,
-    'EQI4': Op.EQ,
-    'EQU4': Op.EQ,
-    'GEF4': Op.GEF,
-    'GEI4': Op.GEI,
-    'GEU4': Op.GEU,
-    'GTF4': Op.GTF,
-    'GTI4': Op.GTI,
-    'GTU4': Op.GTU,
-    'LEF4': Op.LEF,
-    'LEI4': Op.LEI,
-    'LEU4': Op.LEU,
-    'LTF4': Op.LTF,
-    'LTI4': Op.LTI,
-    'LTU4': Op.LTU,
-    'NEF4': Op.NEF,
-    'NEI4': Op.NE,
-    'NEU4': Op.NE,
-    'JUMPV': Op.JUMP,
-    'LOADB4': Op.UNDEF,
-    'LOADF4': Op.UNDEF,
-    'LOADI4': Op.UNDEF,
-    'LOADP4': Op.UNDEF,
-    'LOADU4': Op.UNDEF,
+    "BREAK": Op.BREAK,
+    "CNSTF4": Op.CONST,
+    "CNSTI4": Op.CONST,
+    "CNSTP4": Op.CONST,
+    "CNSTU4": Op.CONST,
+    "CNSTI2": Op.CONST,
+    "CNSTU2": Op.CONST,
+    "CNSTI1": Op.CONST,
+    "CNSTU1": Op.CONST,
+    "ASGNB": Op.BLOCK_COPY,
+    "ASGNF4": Op.STORE4,
+    "ASGNI4": Op.STORE4,
+    "ASGNP4": Op.STORE4,
+    "ASGNU4": Op.STORE4,
+    "ASGNI2": Op.STORE2,
+    "ASGNU2": Op.STORE2,
+    "ASGNI1": Op.STORE1,
+    "ASGNU1": Op.STORE1,
+    "INDIRB": Op.IGNORE,
+    "INDIRF4": Op.LOAD4,
+    "INDIRI4": Op.LOAD4,
+    "INDIRP4": Op.LOAD4,
+    "INDIRU4": Op.LOAD4,
+    "INDIRI2": Op.LOAD2,
+    "INDIRU2": Op.LOAD2,
+    "INDIRI1": Op.LOAD1,
+    "INDIRU1": Op.LOAD1,
+    "CVFF4": Op.UNDEF,
+    "CVFI4": Op.CVFI,
+    "CVIF4": Op.CVIF,
+    "CVII4": Op.SEX8,
+    "CVII1": Op.IGNORE,
+    "CVII2": Op.IGNORE,
+    "CVIU4": Op.IGNORE,
+    "CVPU4": Op.IGNORE,
+    "CVUI4": Op.IGNORE,
+    "CVUP4": Op.IGNORE,
+    "CVUU4": Op.IGNORE,
+    "CVUU1": Op.IGNORE,
+    "NEGF4": Op.NEGF,
+    "NEGI4": Op.NEGI,
+    "ADDRGP4": Op.CONST,
+    "ADDF4": Op.ADDF,
+    "ADDI4": Op.ADD,
+    "ADDP4": Op.ADD,
+    "ADDP": Op.ADD,
+    "ADDU4": Op.ADD,
+    "SUBF4": Op.SUBF,
+    "SUBI4": Op.SUB,
+    "SUBP4": Op.SUB,
+    "SUBU4": Op.SUB,
+    "LSHI4": Op.LSH,
+    "LSHU4": Op.LSH,
+    "MODI4": Op.MODI,
+    "MODU4": Op.MODU,
+    "RSHI4": Op.RSHI,
+    "RSHU4": Op.RSHU,
+    "BANDI4": Op.BAND,
+    "BANDU4": Op.BAND,
+    "BCOMI4": Op.BCOM,
+    "BCOMU4": Op.BCOM,
+    "BORI4": Op.BOR,
+    "BORU4": Op.BOR,
+    "BXORI4": Op.BXOR,
+    "BXORU4": Op.BXOR,
+    "DIVF4": Op.DIVF,
+    "DIVI4": Op.DIVI,
+    "DIVU4": Op.DIVU,
+    "MULF4": Op.MULF,
+    "MULI4": Op.MULI,
+    "MULU4": Op.MULU,
+    "EQF4": Op.EQF,
+    "EQI4": Op.EQ,
+    "EQU4": Op.EQ,
+    "GEF4": Op.GEF,
+    "GEI4": Op.GEI,
+    "GEU4": Op.GEU,
+    "GTF4": Op.GTF,
+    "GTI4": Op.GTI,
+    "GTU4": Op.GTU,
+    "LEF4": Op.LEF,
+    "LEI4": Op.LEI,
+    "LEU4": Op.LEU,
+    "LTF4": Op.LTF,
+    "LTI4": Op.LTI,
+    "LTU4": Op.LTU,
+    "NEF4": Op.NEF,
+    "NEI4": Op.NE,
+    "NEU4": Op.NE,
+    "JUMPV": Op.JUMP,
+    "LOADB4": Op.UNDEF,
+    "LOADF4": Op.UNDEF,
+    "LOADI4": Op.UNDEF,
+    "LOADP4": Op.UNDEF,
+    "LOADU4": Op.UNDEF,
 }
 
 
@@ -140,10 +140,10 @@ class Assembler:
             return
 
         if name in self.symbols:
-            raise AssemblerError(f'Multiple definitions for {name}')
+            raise AssemblerError(f"Multiple definitions for {name}")
 
-        if name.startswith('$'):
-            name += f'_{self.current_file_index}'
+        if name.startswith("$"):
+            name += f"_{self.current_file_index}"
 
         self.symbols[name] = Symbol(self.current_segment, value)
         self.last_symbol = self.symbols[name]
@@ -152,11 +152,11 @@ class Assembler:
         if self.pass_number == 0:
             return 0
 
-        if name.startswith('$'):
-            name += f'_{self.current_file_index}'
+        if name.startswith("$"):
+            name += f"_{self.current_file_index}"
 
         if name not in self.symbols:
-            raise AssemblerError(f'Symbol {name} undefined')
+            raise AssemblerError(f"Symbol {name} undefined")
 
         s = self.symbols[name]
         return s.segment.segment_base + s.value
@@ -165,17 +165,17 @@ class Assembler:
         start = 0
         last_op = None
         for i in range(len(expr) + 1):
-            if i == len(expr) or expr[i] == '+' or (expr[i] == '-' and i > 0):
+            if i == len(expr) or expr[i] == "+" or (expr[i] == "-" and i > 0):
                 end = i
                 sym = expr[start:end]
                 start = end + 1
 
-                if last_op == '+':
+                if last_op == "+":
                     value += int(sym)
-                elif last_op == '-':
+                elif last_op == "-":
                     value -= int(sym)
                 else:
-                    if sym[0] in '+-0123456789':
+                    if sym[0] in "+-0123456789":
                         value = int(sym)
                     else:
                         value = self.lookup_symbol(sym)
@@ -193,12 +193,10 @@ class Assembler:
                 self.last_symbol.value = len(current_segment.image)
 
     def assemble(self, input_files, code_base=0, data_base=0, symbols={}):
-        self.segments = {
-            name: Segment() for name in ('code', 'data', 'lit', 'bss')
-        }
-        data = self.segments['data']
-        lit = self.segments['lit']
-        bss = self.segments['bss']
+        self.segments = {name: Segment() for name in ("code", "data", "lit", "bss")}
+        data = self.segments["data"]
+        lit = self.segments["lit"]
+        bss = self.segments["bss"]
 
         self.symbols = {}
 
@@ -218,7 +216,7 @@ class Assembler:
             bss.segment_base = lit.segment_base + len(lit.image)
             for seg in self.segments:
                 self.segments[seg].image = bytearray()
-            data.image = bytearray(b'\x00'*4)
+            data.image = bytearray(b"\x00" * 4)
 
             instructions = []
 
@@ -226,9 +224,11 @@ class Assembler:
                 self.current_file_index = current_file_index
                 with open(filename) as f:
                     for line in f:
-                        instructions.extend(self._assemble_line(
-                            line, address=code_base + len(instructions)
-                        ))
+                        instructions.extend(
+                            self._assemble_line(
+                                line, address=code_base + len(instructions)
+                            )
+                        )
 
             for seg in self.segments:
                 self.segments[seg].image = pad(self.segments[seg].image, 4)
@@ -250,19 +250,19 @@ class Assembler:
             opcode = opcode_map[tokens[0]]
 
             if opcode == Op.UNDEF:
-                raise AssemblerError(f'Undefined opcode: {opcode}')
+                raise AssemblerError(f"Undefined opcode: {opcode}")
 
             if opcode == Op.IGNORE:
                 return []
 
             if opcode == Op.SEX8:
                 # sign extensions need to check next parm
-                if tokens[1][0] == '1':
+                if tokens[1][0] == "1":
                     opcode = Op.SEX8
-                elif tokens[1][0] == '2':
+                elif tokens[1][0] == "2":
                     opcode = Op.SEX16
                 else:
-                    raise AssemblerError(f'Bad sign extension: {tokens[1]}')
+                    raise AssemblerError(f"Bad sign extension: {tokens[1]}")
                 # get rid of the parm now that we have the right opcode
                 tokens = tokens[:1]
 
@@ -275,84 +275,82 @@ class Assembler:
 
             return [Ins(opcode, operand)]
 
-        elif tokens[0].startswith('CALL'):
+        elif tokens[0].startswith("CALL"):
             self.current_arg_offset = 0
             return [Ins(Op.CALL)]
 
-        elif tokens[0].startswith('ARG'):
+        elif tokens[0].startswith("ARG"):
             self.current_arg_offset += 4
             return [Ins(Op.ARG, 8 + self.current_arg_offset - 4)]
 
-        elif tokens[0].startswith('RET'):
+        elif tokens[0].startswith("RET"):
             return [Ins(Op.LEAVE, 8 + self.current_locals + self.current_args)]
 
-        elif tokens[0].startswith('pop'):
+        elif tokens[0].startswith("pop"):
             return [Ins(Op.POP)]
 
-        elif tokens[0].startswith('ADDRF'):
+        elif tokens[0].startswith("ADDRF"):
             offset = self.parse_expression(tokens[1])
             offset += 16 + self.current_args + self.current_locals
             return [Ins(Op.LOCAL, offset)]
 
-        elif tokens[0].startswith('ADDRL'):
+        elif tokens[0].startswith("ADDRL"):
             offset = self.parse_expression(tokens[1]) + 8 + self.current_args
             return [Ins(Op.LOCAL, offset)]
 
-        elif tokens[0] == 'proc':
+        elif tokens[0] == "proc":
             self.define_symbol(tokens[1], address)
             self.current_locals = align(int(tokens[2]), 4)
             self.current_args = align(int(tokens[3]), 4)
             return [Ins(Op.ENTER, 8 + self.current_locals + self.current_args)]
 
-        elif tokens[0] == 'endproc':
+        elif tokens[0] == "endproc":
             return [
                 Ins(Op.PUSH),
                 Ins(Op.LEAVE, 8 + self.current_locals + self.current_args),
             ]
 
-        elif tokens[0] == 'address':
+        elif tokens[0] == "address":
             value = self.parse_expression(tokens[1])
-            self.hack_to_segment(self.segments['data'])
+            self.hack_to_segment(self.segments["data"])
             emit_int(self.current_segment, value)
 
         elif tokens[0] in self.segments:
             self.current_segment = self.segments[tokens[0]]
 
-        elif tokens[0] == 'equ':
+        elif tokens[0] == "equ":
             self.define_symbol(tokens[1], int(tokens[2]))
 
-        elif tokens[0] == 'align':
+        elif tokens[0] == "align":
             alignment = int(tokens[1])
-            self.current_segment.image = pad(
-                self.current_segment.image, alignment
-            )
+            self.current_segment.image = pad(self.current_segment.image, alignment)
 
-        elif tokens[0] == 'skip':
+        elif tokens[0] == "skip":
             size = int(tokens[1])
-            self.current_segment.image += b'\x00' * size
+            self.current_segment.image += b"\x00" * size
 
-        elif tokens[0] == 'byte':
+        elif tokens[0] == "byte":
             size = int(tokens[1])
             value = int(tokens[2])
             if size == 1:
-                self.hack_to_segment(self.segments['lit'])
+                self.hack_to_segment(self.segments["lit"])
             elif size == 4:
-                self.hack_to_segment(self.segments['data'])
-            self.current_segment.image += value.to_bytes(size, 'little')
+                self.hack_to_segment(self.segments["data"])
+            self.current_segment.image += value.to_bytes(size, "little")
 
-        elif tokens[0].startswith('LABEL'):
-            if self.current_segment == self.segments['code']:
+        elif tokens[0].startswith("LABEL"):
+            if self.current_segment == self.segments["code"]:
                 self.define_symbol(tokens[1], address)
             else:
                 self.define_symbol(tokens[1], len(self.current_segment.image))
 
-        elif tokens[0] in ('import', 'export', 'line', 'file'):
+        elif tokens[0] in ("import", "export", "line", "file"):
             pass
 
-        elif tokens[0].startswith(';'):
+        elif tokens[0].startswith(";"):
             pass
 
         else:
-            raise AssemblerError(f'Syntax error: {line}')
+            raise AssemblerError(f"Syntax error: {line}")
 
         return []

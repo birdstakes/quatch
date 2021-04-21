@@ -23,9 +23,7 @@ import struct
 import subprocess
 import tempfile
 from . import q3asm
-from .instructions import (
-    assemble, disassemble, Instruction as Ins, Opcode as Op
-)
+from .instructions import assemble, disassemble, Instruction as Ins, Opcode as Op
 from .util import pad
 
 
@@ -39,15 +37,18 @@ class CompilerError(Exception):
 
 class Qvm:
     def __init__(self, path, symbols=None):
-        with open(path, 'rb') as f:
-            format = '<IIIIIIII'
+        with open(path, "rb") as f:
+            format = "<IIIIIIII"
             raw_header = f.read(struct.calcsize(format))
             (
                 self.vm_magic,
                 instruction_count,
-                code_offset, code_length,
-                data_offset, self.data_length,
-                self.lit_length, self.bss_length,
+                code_offset,
+                code_length,
+                data_offset,
+                self.data_length,
+                self.lit_length,
+                self.bss_length,
             ) = struct.unpack(format, raw_header)
 
             f.seek(code_offset)
@@ -66,15 +67,15 @@ class Qvm:
         # changed, invalidating this?
         self.calls = collections.defaultdict(list)
         for i in range(len(self.instructions) - 1):
-            first, second = self.instructions[i:i+2]
+            first, second = self.instructions[i : i + 2]
             if first.opcode == Op.CONST and second.opcode == Op.CALL:
                 self.calls[first.operand].append(i)
 
     def write(self, path):
         self._add_data_init_code()
 
-        with open(path, 'wb') as f:
-            format = '<IIIIIIII'
+        with open(path, "wb") as f:
+            format = "<IIIIIIII"
             header_size = struct.calcsize(format)
             f.seek(header_size)
 
@@ -86,14 +87,19 @@ class Qvm:
             f.write(self.data)
 
             f.seek(0)
-            f.write(struct.pack(
-                format,
-                self.vm_magic,
-                len(self.instructions),
-                code_offset, len(code),
-                data_offset, self.data_length,
-                self.lit_length, self.bss_length + len(self.new_data),
-            ))
+            f.write(
+                struct.pack(
+                    format,
+                    self.vm_magic,
+                    len(self.instructions),
+                    code_offset,
+                    len(code),
+                    data_offset,
+                    self.data_length,
+                    self.lit_length,
+                    self.bss_length + len(self.new_data),
+                )
+            )
 
     def add_data(self, data, align=4):
         self.new_data = pad(self.new_data, align)
@@ -102,7 +108,7 @@ class Qvm:
         return offset
 
     def add_string(self, string):
-        self.add_data(string.encode() + b'\0', align=1)
+        self.add_data(string.encode() + b"\0", align=1)
 
     def add_code(self, instructions):
         address = len(self.instructions)
@@ -110,20 +116,20 @@ class Qvm:
         return address
 
     def add_c_code(self, c_code, include_dirs=[]):
-        path = os.getcwd() + os.pathsep + os.environ.get('PATH', '')
+        path = os.getcwd() + os.pathsep + os.environ.get("PATH", "")
         lcc = (
-            os.environ.get('LCC')
-            or shutil.which('lcc', path=path)
-            or shutil.which('q3lcc', path=path)
+            os.environ.get("LCC")
+            or shutil.which("lcc", path=path)
+            or shutil.which("q3lcc", path=path)
         )
         if lcc is None:
             raise FileNotFoundError(
-                'Unable to locate lcc. Set the LCC environment variable or '
-                'make sure it is in your PATH.'
+                "Unable to locate lcc. Set the LCC environment variable or make sure"
+                "it is in your PATH."
             )
 
-        c_file = tempfile.NamedTemporaryFile(suffix='.c', delete=False)
-        asm_file = tempfile.NamedTemporaryFile(suffix='.asm', delete=False)
+        c_file = tempfile.NamedTemporaryFile(suffix=".c", delete=False)
+        asm_file = tempfile.NamedTemporaryFile(suffix=".asm", delete=False)
 
         try:
             c_file.write(c_code.encode())
@@ -135,18 +141,15 @@ class Qvm:
 
             command = [
                 lcc,
-                '-DQ3_VM',
-                '-S',
-                '-Wf-target=bytecode',
-                '-Wf-g',
+                "-DQ3_VM",
+                "-S",
+                "-Wf-target=bytecode",
+                "-Wf-g",
             ]
 
-            command += [f'-I{include_dir}' for include_dir in include_dirs]
+            command += [f"-I{include_dir}" for include_dir in include_dirs]
 
-            command += [
-                '-o', asm_file.name,
-                c_file.name
-            ]
+            command += ["-o", asm_file.name, c_file.name]
 
             subprocess.check_output(command, stderr=subprocess.STDOUT)
 
@@ -158,14 +161,14 @@ class Qvm:
                 [asm_file.name],
                 code_base=len(self.instructions),
                 data_base=bss_end + len(self.new_data),
-                symbols=self.symbols
+                symbols=self.symbols,
             )
 
             self.instructions.extend(instructions)
 
-            self.add_data(segments['data'].image)
-            self.add_data(segments['lit'].image)
-            self.add_data(segments['bss'].image)
+            self.add_data(segments["data"].image)
+            self.add_data(segments["lit"].image)
+            self.add_data(segments["bss"].image)
 
             self.symbols.update(symbols)
 
@@ -184,13 +187,13 @@ class Qvm:
             return
 
         original_init = (
-            self.symbols.get('G_InitGame')
-            or self.symbols.get('CG_Init')
-            or self.symbols.get('UI_Init')
+            self.symbols.get("G_InitGame")
+            or self.symbols.get("CG_Init")
+            or self.symbols.get("UI_Init")
         )
         if original_init is None:
             raise InitSymbolNotFoundError(
-                'Cannot find a symbol for G_InitGame, CG_Init, or UI_Init'
+                "Cannot find a symbol for G_InitGame, CG_Init, or UI_Init"
             )
 
         # check original_init's callsite case it has already been hooked
@@ -198,39 +201,40 @@ class Qvm:
         original_init_call = self.calls[original_init][0]
         current_init = self.instructions[original_init_call].operand
 
-        init_wrapper = self.add_code([
-            Ins(Op.ENTER, 0x100)
-        ])
+        init_wrapper = self.add_code([Ins(Op.ENTER, 0x100)])
 
         self.new_data = pad(self.new_data, 4)
         bss_end = self.data_length + self.lit_length + self.bss_length
         for i in range(0, len(self.new_data), 4):
-            value = struct.unpack('<I', self.new_data[i:i+4])[0]
-            self.add_code([
-                Ins(Op.CONST, bss_end + i),
-                Ins(Op.CONST, value),
-                Ins(Op.STORE4),
-            ])
+            value = struct.unpack("<I", self.new_data[i : i + 4])[0]
+            self.add_code(
+                [
+                    Ins(Op.CONST, bss_end + i),
+                    Ins(Op.CONST, value),
+                    Ins(Op.STORE4),
+                ]
+            )
 
-        self.add_code([
-            # call original init function
-            Ins(Op.LOCAL, 0x108),
-            Ins(Op.LOAD4),
-            Ins(Op.ARG, 0x8),
-            Ins(Op.LOCAL, 0x10c),
-            Ins(Op.LOAD4),
-            Ins(Op.ARG, 0xc),
-            Ins(Op.LOCAL, 0x110),
-            Ins(Op.LOAD4),
-            Ins(Op.ARG, 0x10),
-            Ins(Op.CONST, current_init),
-            Ins(Op.CALL),
-            Ins(Op.LEAVE, 0x100),
-
-            # dummy end proc so quake3e doesn't complain
-            Ins(Op.PUSH),
-            Ins(Op.LEAVE, 0x100),
-        ])
+        self.add_code(
+            [
+                # call original init function
+                Ins(Op.LOCAL, 0x108),
+                Ins(Op.LOAD4),
+                Ins(Op.ARG, 0x8),
+                Ins(Op.LOCAL, 0x10C),
+                Ins(Op.LOAD4),
+                Ins(Op.ARG, 0xC),
+                Ins(Op.LOCAL, 0x110),
+                Ins(Op.LOAD4),
+                Ins(Op.ARG, 0x10),
+                Ins(Op.CONST, current_init),
+                Ins(Op.CALL),
+                Ins(Op.LEAVE, 0x100),
+                # dummy end proc so quake3e doesn't complain
+                Ins(Op.PUSH),
+                Ins(Op.LEAVE, 0x100),
+            ]
+        )
 
         self.replace_calls(original_init, init_wrapper)
 
