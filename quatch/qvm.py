@@ -126,7 +126,7 @@ class Qvm:
         )
         if lcc is None:
             raise FileNotFoundError(
-                "Unable to locate lcc. Set the LCC environment variable or make sure"
+                "Unable to locate lcc. Set the LCC environment variable or make sure "
                 "it is in your PATH."
             )
 
