@@ -136,8 +136,7 @@ class Qvm:
         try:
             c_file.write(c_code.encode())
 
-            # these must be closed on windows or lcc and q3asm won't be able
-            # to open them
+            # these must be closed on windows or lcc won't be able to open them
             c_file.close()
             asm_file.close()
 
@@ -198,7 +197,7 @@ class Qvm:
                 "Cannot find a symbol for G_InitGame, CG_Init, or UI_Init"
             )
 
-        # check original_init's callsite case it has already been hooked
+        # check original_init's callsite in case it has already been hooked
         assert len(self.calls[original_init]) == 1
         original_init_call = self.calls[original_init][0]
         current_init = self.instructions[original_init_call].operand
