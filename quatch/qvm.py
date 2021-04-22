@@ -147,12 +147,18 @@ class Qvm:
                 "-Wf-target=bytecode",
                 "-Wf-g",
             ]
-
             command += [f"-I{include_dir}" for include_dir in include_dirs]
-
             command += ["-o", asm_file.name, c_file.name]
 
-            subprocess.check_output(command, stderr=subprocess.STDOUT)
+            # make sure lcc can find the other executables it needs
+            env = os.environ.copy()
+            env["PATH"] = (
+                os.path.realpath(os.path.dirname(lcc))
+                + os.pathsep
+                + env.get("PATH", "")
+            )
+
+            subprocess.check_output(command, env=env, stderr=subprocess.STDOUT)
 
             self.new_data = pad(self.new_data, 4)
 
