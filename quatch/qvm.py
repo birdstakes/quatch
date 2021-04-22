@@ -210,13 +210,14 @@ class Qvm:
         bss_end = self.data_length + self.lit_length + self.bss_length
         for i in range(0, len(self.new_data), 4):
             value = struct.unpack("<I", self.new_data[i : i + 4])[0]
-            self.add_code(
-                [
-                    Ins(Op.CONST, bss_end + i),
-                    Ins(Op.CONST, value),
-                    Ins(Op.STORE4),
-                ]
-            )
+            if value != 0:
+                self.add_code(
+                    [
+                        Ins(Op.CONST, bss_end + i),
+                        Ins(Op.CONST, value),
+                        Ins(Op.STORE4),
+                    ]
+                )
 
         self.add_code(
             [
