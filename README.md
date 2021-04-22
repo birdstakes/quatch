@@ -23,6 +23,11 @@ pre-commit install
 
 ## Usage
 
+Quatch uses the lcc compiler to compile C code. It can be found in the Quake 3 SDK or
+built from the Quake 3 source code. You can either set the `LCC` environment variable
+to the path of the lcc executable, or you can make sure it is in your `PATH` or the
+current working directory.
+
 ```python
 import quatch
 
