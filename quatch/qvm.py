@@ -157,11 +157,10 @@ class Qvm:
             self.new_data = pad(self.new_data, 4)
 
             assembler = q3asm.Assembler()
-            bss_end = self.data_length + self.lit_length + self.bss_length
             instructions, segments, symbols = assembler.assemble(
                 [asm_file.name],
                 code_base=len(self.instructions),
-                data_base=bss_end + len(self.new_data),
+                data_base=self.bss_end + len(self.new_data),
                 symbols=self.symbols,
             )
 
@@ -207,13 +206,12 @@ class Qvm:
         init_wrapper = self.add_code([Ins(Op.ENTER, 0x100)])
 
         self.new_data = pad(self.new_data, 4)
-        bss_end = self.data_length + self.lit_length + self.bss_length
         for i in range(0, len(self.new_data), 4):
             value = struct.unpack("<I", self.new_data[i : i + 4])[0]
             if value != 0:
                 self.add_code(
                     [
-                        Ins(Op.CONST, bss_end + i),
+                        Ins(Op.CONST, self.bss_end + i),
                         Ins(Op.CONST, value),
                         Ins(Op.STORE4),
                     ]
