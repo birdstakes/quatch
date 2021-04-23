@@ -135,64 +135,6 @@ class AssemblerError(Exception):
 
 
 class Assembler:
-    def define_symbol(self, name, value):
-        if self.pass_number == 1:
-            return
-
-        if name in self.symbols:
-            raise AssemblerError(f"Multiple definitions for {name}")
-
-        if name.startswith("$"):
-            name += f"_{self.current_file_index}"
-
-        self.symbols[name] = Symbol(self.current_segment, value)
-        self.last_symbol = self.symbols[name]
-
-    def lookup_symbol(self, name):
-        if self.pass_number == 0:
-            return 0
-
-        if name.startswith("$"):
-            name += f"_{self.current_file_index}"
-
-        if name not in self.symbols:
-            raise AssemblerError(f"Symbol {name} undefined")
-
-        s = self.symbols[name]
-        return s.segment.segment_base + s.value
-
-    def parse_expression(self, expr):
-        start = 0
-        last_op = None
-        value = 0
-        for i in range(len(expr) + 1):
-            if i == len(expr) or expr[i] == "+" or (expr[i] == "-" and i > 0):
-                end = i
-                sym = expr[start:end]
-                start = end + 1
-
-                if last_op == "+":
-                    value += int(sym)
-                elif last_op == "-":
-                    value -= int(sym)
-                else:
-                    if sym[0] in "+-0123456789":
-                        value = int(sym)
-                    else:
-                        value = self.lookup_symbol(sym)
-
-                if i < len(expr):
-                    last_op = expr[end]
-
-        return value
-
-    def hack_to_segment(self, segment):
-        if self.current_segment != segment:
-            self.current_segment = segment
-            if self.pass_number == 0:
-                self.last_symbol.segment = self.current_segment
-                self.last_symbol.value = len(self.current_segment.image)
-
     def assemble(self, input_files, code_base=0, data_base=0, symbols={}):
         self.segments = {name: Segment() for name in ("code", "data", "lit", "bss")}
         data = self.segments["data"]
@@ -268,7 +210,7 @@ class Assembler:
                 tokens = tokens[:1]
 
             if len(tokens) >= 2 and opcode not in (Op.CVIF, Op.CVFI):
-                operand = self.parse_expression(tokens[1])
+                operand = self._parse_expression(tokens[1])
                 if opcode == Op.BLOCK_COPY:
                     operand = align(operand, 4)
             else:
@@ -291,16 +233,16 @@ class Assembler:
             return [Ins(Op.POP)]
 
         elif tokens[0].startswith("ADDRF"):
-            offset = self.parse_expression(tokens[1])
+            offset = self._parse_expression(tokens[1])
             offset += 16 + self.current_args + self.current_locals
             return [Ins(Op.LOCAL, offset)]
 
         elif tokens[0].startswith("ADDRL"):
-            offset = self.parse_expression(tokens[1]) + 8 + self.current_args
+            offset = self._parse_expression(tokens[1]) + 8 + self.current_args
             return [Ins(Op.LOCAL, offset)]
 
         elif tokens[0] == "proc":
-            self.define_symbol(tokens[1], address)
+            self._define_symbol(tokens[1], address)
             self.current_locals = align(int(tokens[2]), 4)
             self.current_args = align(int(tokens[3]), 4)
             return [Ins(Op.ENTER, 8 + self.current_locals + self.current_args)]
@@ -312,15 +254,15 @@ class Assembler:
             ]
 
         elif tokens[0] == "address":
-            value = self.parse_expression(tokens[1])
-            self.hack_to_segment(self.segments["data"])
+            value = self._parse_expression(tokens[1])
+            self._hack_to_segment(self.segments["data"])
             self.current_segment.image += value.to_bytes(4, "little")
 
         elif tokens[0] in self.segments:
             self.current_segment = self.segments[tokens[0]]
 
         elif tokens[0] == "equ":
-            self.define_symbol(tokens[1], int(tokens[2]))
+            self._define_symbol(tokens[1], int(tokens[2]))
 
         elif tokens[0] == "align":
             alignment = int(tokens[1])
@@ -334,16 +276,16 @@ class Assembler:
             size = int(tokens[1])
             value = int(tokens[2])
             if size == 1:
-                self.hack_to_segment(self.segments["lit"])
+                self._hack_to_segment(self.segments["lit"])
             elif size == 4:
-                self.hack_to_segment(self.segments["data"])
+                self._hack_to_segment(self.segments["data"])
             self.current_segment.image += value.to_bytes(size, "little")
 
         elif tokens[0].startswith("LABEL"):
             if self.current_segment == self.segments["code"]:
-                self.define_symbol(tokens[1], address)
+                self._define_symbol(tokens[1], address)
             else:
-                self.define_symbol(tokens[1], len(self.current_segment.image))
+                self._define_symbol(tokens[1], len(self.current_segment.image))
 
         elif tokens[0] in ("import", "export", "line", "file"):
             pass
@@ -355,3 +297,61 @@ class Assembler:
             raise AssemblerError(f"Syntax error: {line}")
 
         return []
+
+    def _parse_expression(self, expr):
+        start = 0
+        last_op = None
+        value = 0
+        for i in range(len(expr) + 1):
+            if i == len(expr) or expr[i] == "+" or (expr[i] == "-" and i > 0):
+                end = i
+                sym = expr[start:end]
+                start = end + 1
+
+                if last_op == "+":
+                    value += int(sym)
+                elif last_op == "-":
+                    value -= int(sym)
+                else:
+                    if sym[0] in "+-0123456789":
+                        value = int(sym)
+                    else:
+                        value = self._lookup_symbol(sym)
+
+                if i < len(expr):
+                    last_op = expr[end]
+
+        return value
+
+    def _define_symbol(self, name, value):
+        if self.pass_number == 1:
+            return
+
+        if name in self.symbols:
+            raise AssemblerError(f"Multiple definitions for {name}")
+
+        if name.startswith("$"):
+            name += f"_{self.current_file_index}"
+
+        self.symbols[name] = Symbol(self.current_segment, value)
+        self.last_symbol = self.symbols[name]
+
+    def _lookup_symbol(self, name):
+        if self.pass_number == 0:
+            return 0
+
+        if name.startswith("$"):
+            name += f"_{self.current_file_index}"
+
+        if name not in self.symbols:
+            raise AssemblerError(f"Symbol {name} undefined")
+
+        s = self.symbols[name]
+        return s.segment.segment_base + s.value
+
+    def _hack_to_segment(self, segment):
+        if self.current_segment != segment:
+            self.current_segment = segment
+            if self.pass_number == 0:
+                self.last_symbol.segment = self.current_segment
+                self.last_symbol.value = len(self.current_segment.image)
