@@ -27,6 +27,9 @@ from .instructions import assemble, disassemble, Instruction as Ins, Opcode as O
 from .util import pad
 
 
+STACK_SIZE = 0x10000
+
+
 class InitSymbolError(Exception):
     pass
 
@@ -50,6 +53,11 @@ class Qvm:
                 self.lit_length,
                 self.bss_length,
             ) = struct.unpack(format, raw_header)
+
+            # STACK_SIZE bytes are reserved at the end of bss for use as the program
+            # stack. We are going to use it for our own data and reserve STACK_SIZE
+            # more bytes at the end when we're done.
+            self.bss_length -= STACK_SIZE
 
             self.bss_end = self.data_length + self.lit_length + self.bss_length
 
@@ -99,7 +107,7 @@ class Qvm:
                     data_offset,
                     self.data_length,
                     self.lit_length,
-                    self.bss_length + len(self.new_data),
+                    self.bss_length + len(self.new_data) + STACK_SIZE,
                 )
             )
 
