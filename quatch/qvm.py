@@ -59,7 +59,7 @@ class Qvm:
             # more bytes at the end when we're done.
             self.bss_length -= STACK_SIZE
 
-            self.bss_end = self.data_length + self.lit_length + self.bss_length
+            self._bss_end = self.data_length + self.lit_length + self.bss_length
 
             f.seek(code_offset)
             self.instructions = disassemble(f.read(code_length))
@@ -75,11 +75,11 @@ class Qvm:
 
         # TODO: what should happen if some of the original instructions are
         # changed, invalidating this?
-        self.calls = collections.defaultdict(list)
+        self._calls = collections.defaultdict(list)
         for i in range(len(self.instructions) - 1):
             first, second = self.instructions[i : i + 2]
             if first.opcode == Op.CONST and second.opcode == Op.CALL:
-                self.calls[first.operand].append(i)
+                self._calls[first.operand].append(i)
 
     def write(self, path):
         self._add_data_init_code()
@@ -113,7 +113,7 @@ class Qvm:
 
     def add_data(self, data, align=4):
         self.new_data = pad(self.new_data, align)
-        address = self.bss_end + len(self.new_data)
+        address = self._bss_end + len(self.new_data)
         self.new_data.extend(data)
         return address
 
@@ -174,7 +174,7 @@ class Qvm:
             instructions, segments, symbols = assembler.assemble(
                 [asm_file.name],
                 code_base=len(self.instructions),
-                data_base=self.bss_end + len(self.new_data),
+                data_base=self._bss_end + len(self.new_data),
                 symbols=self.symbols,
             )
 
@@ -210,11 +210,11 @@ class Qvm:
                 "Cannot find a symbol for G_InitGame, CG_Init, or UI_Init"
             )
 
-        if len(self.calls[original_init]) == 0:
+        if len(self._calls[original_init]) == 0:
             raise InitSymbolError(f"{init_name} is never called")
 
         # check original_init's first callsite in case it has already been hooked
-        original_init_call = self.calls[original_init][0]
+        original_init_call = self._calls[original_init][0]
         current_init = self.instructions[original_init_call].operand
 
         init_wrapper = self.add_code([Ins(Op.ENTER, 0x100)])
@@ -225,7 +225,7 @@ class Qvm:
             if value != 0:
                 self.add_code(
                     [
-                        Ins(Op.CONST, self.bss_end + i),
+                        Ins(Op.CONST, self._bss_end + i),
                         Ins(Op.CONST, value),
                         Ins(Op.STORE4),
                     ]
@@ -261,7 +261,7 @@ class Qvm:
         if not isinstance(new, int):
             new = self.symbols[new]
 
-        for call in self.calls[old]:
+        for call in self._calls[old]:
             self.instructions[call].operand = new
 
-        return len(self.calls[old])
+        return len(self._calls[old])
