@@ -33,6 +33,7 @@ import quatch
 
 symbols = {
     'G_InitGame': 0x2b7,
+    'Com_Printf': 0x446,
 }
 
 qvm = quatch.Qvm('qagame.qvm', symbols=symbols)
