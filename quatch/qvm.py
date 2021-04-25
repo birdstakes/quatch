@@ -15,6 +15,10 @@
 # You should have received a copy of the GNU General Public License
 # along with Quatch; If not, see <https://www.gnu.org/licenses/>.
 
+"""This module contains the Qvm class and associated exceptions."""
+
+from __future__ import annotations
+
 import collections
 import contextlib
 import os
@@ -22,6 +26,8 @@ import shutil
 import struct
 import subprocess
 import tempfile
+from collections.abc import Iterable, Mapping
+from typing import Optional, Union
 from . import q3asm
 from .instructions import assemble, disassemble, Instruction as Ins, Opcode as Op
 from .util import pad
@@ -39,7 +45,26 @@ class CompilerError(Exception):
 
 
 class Qvm:
-    def __init__(self, path, symbols=None):
+    """A patchable Quake 3 VM program.
+
+    Attributes:
+        vm_magic: The "magic number" of the qvm file format version.
+        data: Combined contents of the data and lit sections.
+        data_length: Length of the data section.
+        lit_length: Length of the lit section.
+        bss_length: Length of the bss section.
+        instructions: Dissasembly of the code section.
+        symbols: A dictionary mapping names to addresses.
+        new_data: Data that has been added to the qvm since loading it.
+    """
+
+    def __init__(self, path: str, symbols: Optional[Mapping[str, int]] = None) -> None:
+        """Initialize Qvm from a .qvm file.
+
+        Args:
+            path: Path of the .qvm file to read.
+            symbols: A mapping from names to addresses.
+        """
         with open(path, "rb") as f:
             format = "<IIIIIIII"
             raw_header = f.read(struct.calcsize(format))
@@ -70,7 +95,7 @@ class Qvm:
             f.seek(data_offset)
             self.data = f.read(self.data_length + self.lit_length)
 
-        self.symbols = symbols or {}
+        self.symbols = dict(symbols or {})
         self.new_data = bytearray()
 
         # TODO: what should happen if some of the original instructions are
@@ -81,7 +106,19 @@ class Qvm:
             if first.opcode == Op.CONST and second.opcode == Op.CALL:
                 self._calls[first.operand].append(i)
 
-    def write(self, path):
+    def write(self, path: str) -> None:
+        """Write a .qvm file.
+
+        Requires a symbol to be defined for one of the G_InitGame, CG_Init, or UI_Init
+        functions if any new data has been added so that it can be initialized by
+        hooking the function.
+
+        Args:
+            path: Path of the .qvm file to write.
+
+        Raises:
+            InitSymbolError: No valid G_InitGame, CG_Init, or UI_Init symbol was found.
+        """
         self._add_data_init_code()
 
         with open(path, "wb") as f:
@@ -111,21 +148,60 @@ class Qvm:
                 )
             )
 
-    def add_data(self, data, align=4):
+    def add_data(self, data: bytes, align: int = 4) -> int:
+        """Add data to the Qvm.
+
+        Args:
+            data: The data to add.
+            align: The added data's address will be a multiple of this.
+
+        Returns:
+            The address of the added data.
+        """
         self.new_data = pad(self.new_data, align)
         address = self._bss_end + len(self.new_data)
         self.new_data.extend(data)
         return address
 
-    def add_string(self, string):
+    def add_string(self, string: str) -> int:
+        """Add a string to the Qvm.
+
+        Args:
+            string: The string to add.
+
+        Returns:
+            The address of the added string.
+        """
         return self.add_data(string.encode() + b"\0", align=1)
 
-    def add_code(self, instructions):
+    def add_code(self, instructions: Iterable[Ins]) -> int:
+        """Add code to the Qvm.
+
+        Args:
+            instructions: The instructions to add.
+
+        Returns:
+            The address of the added code.
+        """
         address = len(self.instructions)
         self.instructions.extend(instructions)
         return address
 
-    def add_c_code(self, c_code, include_dirs=[]):
+    def add_c_code(
+        self, code: str, include_dirs: Optional[Iterable[str]] = None
+    ) -> None:
+        """Compile C code and add it to the Qvm.
+
+        Symbols defined in the code will be added to `symbols`.
+
+        Args:
+            code: The C code to compile.
+            include_dirs: A list of include paths.
+
+        Raises:
+            CompilerError: There was an error during compilation.
+            FileNotFoundError: The lcc compiler could not be found.
+        """
         path = os.getcwd() + os.pathsep + os.environ.get("PATH", "")
         lcc = (
             os.environ.get("LCC")
@@ -142,7 +218,7 @@ class Qvm:
         asm_file = tempfile.NamedTemporaryFile(suffix=".asm", delete=False)
 
         try:
-            c_file.write(c_code.encode())
+            c_file.write(code.encode())
 
             # these must be closed on windows or lcc won't be able to open them
             c_file.close()
@@ -155,7 +231,8 @@ class Qvm:
                 "-Wf-target=bytecode",
                 "-Wf-g",
             ]
-            command += [f"-I{include_dir}" for include_dir in include_dirs]
+            if include_dirs is not None:
+                command += [f"-I{include_dir}" for include_dir in include_dirs]
             command += ["-o", asm_file.name, c_file.name]
 
             # make sure lcc can find the other executables it needs
@@ -196,7 +273,7 @@ class Qvm:
                 os.remove(c_file.name)
                 os.remove(asm_file.name)
 
-    def _add_data_init_code(self):
+    def _add_data_init_code(self) -> None:
         if len(self.new_data) == 0:
             return
 
@@ -252,9 +329,20 @@ class Qvm:
             ]
         )
 
+        # only hook the first call site in case there are multiple (this should be the
+        # one called from vmMain when the qvm is first loaded)
         self.instructions[original_init_call].operand = init_wrapper
 
-    def replace_calls(self, old, new):
+    def replace_calls(self, old: Union[str, int], new: Union[str, int]) -> int:
+        """Replace calls to ``old`` with calls to ``new``.
+
+        Args:
+            old: The name or address of the old function.
+            new: The name or address of the new function.
+
+        Returns:
+            The number of calls replaced.
+        """
         if not isinstance(old, int):
             old = self.symbols[old]
 
