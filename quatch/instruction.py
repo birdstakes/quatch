@@ -17,6 +17,7 @@
 
 import enum
 import io
+import struct
 
 
 class Opcode(enum.IntEnum):
@@ -96,24 +97,62 @@ operand_sizes.update({op: 0 for op in Opcode if op not in operand_sizes})
 
 class Instruction:
     def __init__(self, opcode, operand=None):
-        self.opcode = opcode
-        self.operand = operand
-        self.operand_size = operand_sizes[opcode]
+        self._opcode = Opcode(opcode)
+        self._operand = None
 
-        if self.operand_size != 0 and operand is None:
+        if operand is not None:
+            self.operand = operand
+        elif operand_sizes[opcode] != 0:
             raise TypeError(f"{opcode.name} requires an operand")
 
     def __repr__(self):
-        if self.operand_size != 0:
-            return f"{self.opcode.name} {self.operand:#x}"
+        if self._operand is None:
+            return f"{self._opcode.name}"
+        elif isinstance(self._operand, float):
+            return f"{self._opcode.name} {self._operand}"
         else:
-            return f"{self.opcode.name}"
+            return f"{self._opcode.name} {self._operand:#x}"
+
+    @property
+    def opcode(self):
+        return self._opcode
+
+    @property
+    def operand(self):
+        if self._operand is None:
+            raise AttributeError(f"{self._opcode.name} does not have an operand")
+        return self._operand
+
+    @operand.setter
+    def operand(self, value):
+        size = operand_sizes[self._opcode]
+        if size == 0:
+            raise TypeError(f"{self._opcode.name} does not take an operand")
+
+        if isinstance(value, float):
+            if self._opcode != Opcode.CONST:
+                raise ValueError("only CONST can take a float operand")
+            try:
+                struct.pack("<f", value)
+            except struct.error:
+                raise ValueError("operand does not fit in a 32 bit float")
+            self._operand = value
+            return
+
+        min_value = -(2 ** (size * 8 - 1))
+        max_value = 2 ** (size * 8) - 1
+        if not min_value <= value <= max_value:
+            raise ValueError(f"operand out of range for {self._opcode.name}")
+
+        self._operand = value
 
     def assemble(self):
-        code = self.opcode.to_bytes(1, "little")
-        if self.operand is not None:
-            code += self.operand.to_bytes(
-                self.operand_size, "little", signed=self.operand < 0
+        code = self._opcode.to_bytes(1, "little")
+        if isinstance(self._operand, float):
+            code += struct.pack("<f", self._operand)
+        elif self._operand is not None:
+            code += self._operand.to_bytes(
+                operand_sizes[self._opcode], "little", signed=self._operand < 0
             )
         return code
 
