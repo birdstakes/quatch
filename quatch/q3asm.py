@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Quatch; If not, see <https://www.gnu.org/licenses/>.
 
-from .instructions import Instruction as Ins, Opcode as Op
+from .instruction import Instruction as Ins, Opcode as Op
 from .util import align, pad
 
 opcode_map = {

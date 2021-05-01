@@ -29,7 +29,7 @@ import tempfile
 from collections.abc import Iterable, Mapping
 from typing import Optional, Union
 from . import q3asm
-from .instructions import assemble, disassemble, Instruction as Ins, Opcode as Op
+from .instruction import assemble, disassemble, Instruction as Ins, Opcode as Op
 from .util import pad
 
 
