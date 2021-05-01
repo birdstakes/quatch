@@ -15,9 +15,17 @@
 # You should have received a copy of the GNU General Public License
 # along with Quatch; If not, see <https://www.gnu.org/licenses/>.
 
+from __future__ import annotations
+
 import enum
 import io
 import struct
+from collections.abc import Iterable
+from itertools import islice
+from typing import Optional, Union
+
+
+Operand = Union[int, float]
 
 
 class Opcode(enum.IntEnum):
@@ -91,21 +99,21 @@ operand_sizes = {
     Opcode.BLOCK_COPY: 4,
     Opcode.ARG: 1,
 }
-operand_sizes.update({op: 4 for op in range(Opcode.EQ, Opcode.GEF + 1)})
+operand_sizes.update({op: 4 for op in islice(Opcode, Opcode.EQ, Opcode.GEF + 1)})
 operand_sizes.update({op: 0 for op in Opcode if op not in operand_sizes})
 
 
 class Instruction:
-    def __init__(self, opcode, operand=None):
-        self._opcode = Opcode(opcode)
-        self._operand = None
+    def __init__(self, opcode: Opcode, operand: Optional[Operand] = None) -> None:
+        self._opcode: Opcode = opcode
+        self._operand: Optional[Operand] = None
 
         if operand is not None:
             self.operand = operand
         elif operand_sizes[opcode] != 0:
             raise TypeError(f"{opcode.name} requires an operand")
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         if self._operand is None:
             return f"{self._opcode.name}"
         elif isinstance(self._operand, float):
@@ -114,17 +122,17 @@ class Instruction:
             return f"{self._opcode.name} {self._operand:#x}"
 
     @property
-    def opcode(self):
+    def opcode(self) -> Opcode:
         return self._opcode
 
     @property
-    def operand(self):
+    def operand(self) -> Operand:
         if self._operand is None:
             raise AttributeError(f"{self._opcode.name} does not have an operand")
         return self._operand
 
     @operand.setter
-    def operand(self, value):
+    def operand(self, value: Operand) -> None:
         size = operand_sizes[self._opcode]
         if size == 0:
             raise TypeError(f"{self._opcode.name} does not take an operand")
@@ -146,7 +154,7 @@ class Instruction:
 
         self._operand = value
 
-    def assemble(self):
+    def assemble(self) -> bytes:
         code = self._opcode.to_bytes(1, "little")
         if isinstance(self._operand, float):
             code += struct.pack("<f", self._operand)
@@ -157,29 +165,28 @@ class Instruction:
         return code
 
 
-def assemble(instructions):
+def assemble(instructions: Iterable[Instruction]) -> bytes:
     code = bytearray()
     for instruction in instructions:
         code += instruction.assemble()
     return code
 
 
-def disassemble(code):
-    code = io.BytesIO(code)
+def disassemble(code: bytes) -> list[Instruction]:
+    stream = io.BytesIO(code)
     instructions = []
 
     while True:
-        byte = code.read(1)
+        byte = stream.read(1)
         if byte == b"":
             break
 
         opcode = Opcode(int.from_bytes(byte, "little"))
 
         if operand_sizes[opcode] != 0:
-            operand = int.from_bytes(code.read(operand_sizes[opcode]), "little")
+            operand = int.from_bytes(stream.read(operand_sizes[opcode]), "little")
+            instructions.append(Instruction(opcode, operand))
         else:
-            operand = None
-
-        instructions.append(Instruction(opcode, operand))
+            instructions.append(Instruction(opcode))
 
     return instructions
