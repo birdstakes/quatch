@@ -55,4 +55,4 @@ qvm.write('patched_qagame.qvm')
 
 ## License
 
-GPLv2+
+GPLv3+
