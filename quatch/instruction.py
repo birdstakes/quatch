@@ -140,9 +140,9 @@ class Instruction:
 
         >>> from quatch.instruction import Instruction, Opcode
         >>> Instruction(Opcode.PUSH)
-        PUSH
+        Instruction(Opcode.PUSH)
         >>> Instruction(Opcode.CONST, 123)
-        CONST 0x7b
+        Instruction(Opcode.CONST, 0x7b)
     """
 
     def __init__(self, opcode: Opcode, operand: Optional[Operand] = None) -> None:
@@ -161,6 +161,14 @@ class Instruction:
             raise TypeError(f"{opcode.name} requires an operand")
 
     def __repr__(self) -> str:
+        if self._operand is None:
+            return f"Instruction({self._opcode!s})"
+        elif isinstance(self._operand, float):
+            return f"Instruction({self._opcode!s}, {self._operand})"
+        else:
+            return f"Instruction({self._opcode!s}, {self._operand:#x})"
+
+    def __str__(self) -> str:
         if self._operand is None:
             return f"{self._opcode.name}"
         elif isinstance(self._operand, float):
@@ -252,7 +260,7 @@ def disassemble(code: bytes) -> list[Instruction]:
 
         >>> from quatch.instruction import disassemble
         >>> disassemble(b'\x06\x08\x7b\x00\x00\x00')
-        [PUSH, CONST 0x7b]
+        [Instruction(Opcode.PUSH), Instruction(Opcode.CONST, 0x7b)]
     """
     stream = io.BytesIO(code)
     instructions = []
