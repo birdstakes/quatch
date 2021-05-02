@@ -15,6 +15,19 @@
 # You should have received a copy of the GNU General Public License
 # along with Quatch; If not, see <https://www.gnu.org/licenses/>.
 
+r"""This module handles qvm instructions and their assembly and disassembly.
+
+Instructions are described by the following classes:
+
+    * `Instruction` is the instruction itself. It contains the opcode and operand.
+    * `Opcode` is the operation the instruction performs.
+
+They can be converted to and from their raw binary representation:
+
+    * `assemble` converts a list of `Instruction`\ s to bytes.
+    * `disassemble` converts bytes to a list of `Instruction`\ s.
+"""
+
 from __future__ import annotations
 
 import enum
@@ -29,6 +42,11 @@ Operand = Union[int, float]
 
 
 class Opcode(enum.IntEnum):
+    """The operation performed by an instruction.
+
+    See https://www.icculus.org/~phaethon/q3mc/q3vm_specs.html for details.
+    """
+
     UNDEF = 0
     IGNORE = 1
     BREAK = 2
@@ -104,7 +122,36 @@ operand_sizes.update({op: 0 for op in Opcode if op not in operand_sizes})
 
 
 class Instruction:
+    r"""A qvm instruction.
+
+    An Instruction consists of an `Opcode` and optionally an integer or floating point
+    operand, depending on the opcode.
+
+    The `BLOCK_COPY`, `ENTER`, `LEAVE`, `LOCAL`, and comparison (`EQ` through `GEF`)
+    opcodes require a 32-bit signed or unsigned integer operand.
+
+    The `CONST` opcode requires either a 32-bit integer or a 32-bit float.
+
+    The `ARG` opcode requires an 8-bit integer.
+
+    All other opcodes have no operand.
+
+    Example usage:
+
+        >>> from quatch.instruction import Instruction, Opcode
+        >>> Instruction(Opcode.PUSH)
+        PUSH
+        >>> Instruction(Opcode.CONST, 123)
+        CONST 0x7b
+    """
+
     def __init__(self, opcode: Opcode, operand: Optional[Operand] = None) -> None:
+        """Initialize an Instruction.
+
+        Args:
+            opcode: The opcode.
+            operand: The operand if it is required by the opcode.
+        """
         self._opcode: Opcode = opcode
         self._operand: Optional[Operand] = None
 
@@ -123,10 +170,17 @@ class Instruction:
 
     @property
     def opcode(self) -> Opcode:
+        """The opcode.
+
+        This cannot be changed."""
         return self._opcode
 
     @property
     def operand(self) -> Operand:
+        """The operand.
+
+        This can only be set to a valid value for the opcode.
+        """
         if self._operand is None:
             raise AttributeError(f"{self._opcode.name} does not have an operand")
         return self._operand
@@ -155,6 +209,16 @@ class Instruction:
         self._operand = value
 
     def assemble(self) -> bytes:
+        r"""Assemble a single Instruction into bytes.
+
+        Example usage:
+
+            >>> from quatch.instruction import Instruction, Opcode
+            >>> Instruction(Opcode.PUSH).assemble()
+            b'\x06'
+            >>> Instruction(Opcode.CONST, 123).assemble()
+            b'\x08{\x00\x00\x00'
+        """
         code = self._opcode.to_bytes(1, "little")
         if isinstance(self._operand, float):
             code += struct.pack("<f", self._operand)
@@ -166,6 +230,15 @@ class Instruction:
 
 
 def assemble(instructions: Iterable[Instruction]) -> bytes:
+    r"""Assemble `Instruction`\ s into bytes.
+
+    Example usage:
+
+        >>> from quatch.instruction import Instruction as Ins, Opcode as Op
+        >>> from quatch.instruction import assemble
+        >>> assemble([Ins(Op.PUSH), Ins(Op.CONST, 123)])
+        bytearray(b'\x06\x08{\x00\x00\x00')
+    """
     code = bytearray()
     for instruction in instructions:
         code += instruction.assemble()
@@ -173,6 +246,14 @@ def assemble(instructions: Iterable[Instruction]) -> bytes:
 
 
 def disassemble(code: bytes) -> list[Instruction]:
+    r"""Disassemble bytes into `Instruction`\ s.
+
+    Example usage:
+
+        >>> from quatch.instruction import disassemble
+        >>> disassemble(b'\x06\x08\x7b\x00\x00\x00')
+        [PUSH, CONST 0x7b]
+    """
     stream = io.BytesIO(code)
     instructions = []
 
