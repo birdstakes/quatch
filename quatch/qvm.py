@@ -25,6 +25,7 @@ import os
 import shutil
 import struct
 import subprocess
+import sys
 import tempfile
 from collections.abc import Iterable, Mapping
 from typing import Optional, Union
@@ -105,6 +106,8 @@ class Qvm:
             first, second = self.instructions[i : i + 2]
             if first.opcode == Op.CONST and second.opcode == Op.CALL:
                 self._calls[first.operand].append(i)
+
+        self._lcc = self._find_lcc()
 
     def write(self, path: str) -> None:
         """Write a .qvm file.
@@ -187,6 +190,22 @@ class Qvm:
         self.instructions.extend(instructions)
         return address
 
+    def _find_lcc(self):
+        path = os.getcwd() + os.pathsep + os.environ.get("PATH", "")
+        lcc = (
+            os.environ.get("LCC")
+            or shutil.which("lcc", path=path)
+            or shutil.which("q3lcc", path=path)
+        )
+
+        if lcc is None and sys.platform in ("win32", "msys"):
+            for bin_dir in ("bin_nt", "bin"):
+                lcc = lcc or shutil.which(
+                    os.path.join("C:" + os.sep, "quake3", bin_dir, "lcc.exe")
+                )
+
+        return lcc
+
     def add_c_code(
         self, code: str, include_dirs: Optional[Iterable[str]] = None
     ) -> None:
@@ -202,13 +221,7 @@ class Qvm:
             CompilerError: There was an error during compilation.
             FileNotFoundError: The lcc compiler could not be found.
         """
-        path = os.getcwd() + os.pathsep + os.environ.get("PATH", "")
-        lcc = (
-            os.environ.get("LCC")
-            or shutil.which("lcc", path=path)
-            or shutil.which("q3lcc", path=path)
-        )
-        if lcc is None:
+        if self._lcc is None:
             raise FileNotFoundError(
                 "Unable to locate lcc. Set the LCC environment variable or make sure "
                 "it is in your PATH."
@@ -225,7 +238,7 @@ class Qvm:
             asm_file.close()
 
             command = [
-                lcc,
+                self._lcc,
                 "-DQ3_VM",
                 "-S",
                 "-Wf-target=bytecode",
@@ -238,7 +251,7 @@ class Qvm:
             # make sure lcc can find the other executables it needs
             env = os.environ.copy()
             env["PATH"] = (
-                os.path.realpath(os.path.dirname(lcc))
+                os.path.realpath(os.path.dirname(self._lcc))
                 + os.pathsep
                 + env.get("PATH", "")
             )
