@@ -15,10 +15,11 @@
 # You should have received a copy of the GNU General Public License
 # along with Quatch; If not, see <https://www.gnu.org/licenses/>.
 
-"""This module contains the Qvm class and associated exceptions."""
+"""This module contains the main Qvm class."""
 
 from __future__ import annotations
 
+import bisect
 import collections
 import contextlib
 import os
@@ -27,11 +28,12 @@ import struct
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterable, Mapping
-from typing import Optional, Union
+from collections.abc import Iterable, Iterator, Mapping
+from enum import auto, Enum
+from typing import overload, Optional, Union
 from . import q3asm
 from .instruction import assemble, disassemble, Instruction as Ins, Opcode as Op
-from .util import pad
+from .util import align, pad
 
 
 STACK_SIZE = 0x10000
@@ -50,13 +52,9 @@ class Qvm:
 
     Attributes:
         vm_magic: The "magic number" of the qvm file format version.
-        data: Combined contents of the data and lit sections.
-        data_length: Length of the data section.
-        lit_length: Length of the lit section.
-        bss_length: Length of the bss section.
+        memory: Initial memory contents.
         instructions: Dissasembly of the code section.
         symbols: A dictionary mapping names to addresses.
-        new_data: Data that has been added to the qvm since loading it.
     """
 
     def __init__(self, path: str, symbols: Optional[Mapping[str, int]] = None) -> None:
@@ -75,17 +73,10 @@ class Qvm:
                 code_offset,
                 code_length,
                 data_offset,
-                self.data_length,
-                self.lit_length,
-                self.bss_length,
+                self._data_length,
+                self._lit_length,
+                bss_length,
             ) = struct.unpack(format, raw_header)
-
-            # STACK_SIZE bytes are reserved at the end of bss for use as the program
-            # stack. We are going to use it for our own data and reserve STACK_SIZE
-            # more bytes at the end when we're done.
-            self.bss_length -= STACK_SIZE
-
-            self._bss_end = self.data_length + self.lit_length + self.bss_length
 
             f.seek(code_offset)
             self.instructions = disassemble(f.read(code_length))
@@ -93,11 +84,19 @@ class Qvm:
             # strip off trailing instructions that are actually just padding
             self.instructions = self.instructions[:instruction_count]
 
+            self.memory = Memory()
+
+            # STACK_SIZE bytes are reserved at the end of bss for use as the program
+            # stack. We are going to use it for our own data and reserve STACK_SIZE
+            # more bytes at the end when we're done.
+            bss_length -= STACK_SIZE
+
             f.seek(data_offset)
-            self.data = f.read(self.data_length + self.lit_length)
+            self.add_data(f.read(self._data_length))
+            self.add_lit(f.read(self._lit_length))
+            self.add_bss(bss_length)
 
         self.symbols = dict(symbols or {})
-        self.new_data = bytearray()
 
         self._calls = collections.defaultdict(list)
         for i in range(len(self.instructions) - 1):
@@ -132,48 +131,70 @@ class Qvm:
             f.write(code)
 
             data_offset = f.tell()
-            f.write(self.data)
+            f.write(self.memory[: self._data_length + self._lit_length])
 
-            f.seek(0)
-            f.write(
-                struct.pack(
-                    format,
-                    self.vm_magic,
-                    len(self.instructions),
-                    code_offset,
-                    len(code),
-                    data_offset,
-                    self.data_length,
-                    self.lit_length,
-                    self.bss_length + len(self.new_data) + STACK_SIZE,
-                )
+            header = struct.pack(
+                format,
+                self.vm_magic,
+                len(self.instructions),
+                code_offset,
+                len(code),
+                data_offset,
+                self._data_length,
+                self._lit_length,
+                len(self.memory) - self._data_length - self._lit_length + STACK_SIZE,
             )
+            f.seek(0)
+            f.write(header)
 
-    def add_data(self, data: bytes, align: int = 4) -> int:
-        """Add data to the Qvm.
+    def _add_memory(self, tag: RegionTag, data: bytes, alignment: int = 1) -> int:
+        self.memory.pad(alignment)
+        address = len(self.memory)
+        if len(data) != 0:
+            self.memory.add_data(tag, data)
+        return address
+
+    def add_data(self, data: bytes, alignment: int = 4) -> int:
+        """Add data to the Qvm's data section.
+
+        The data section is meant to hold aligned 4-byte words, so ``alignment`` and the
+        size of ``data`` must both be multiples of 4.
 
         Args:
             data: The data to add.
-            align: The added data's address will be a multiple of this.
+            alignment: The added data's address will be a multiple of this.
 
         Returns:
             The address of the added data.
         """
-        self.new_data = pad(self.new_data, align)
-        address = self._bss_end + len(self.new_data)
-        self.new_data.extend(data)
-        return address
+        return self._add_memory(RegionTag.DATA, data, alignment)
 
-    def add_string(self, string: str) -> int:
-        """Add a string to the Qvm.
+    def add_lit(self, data: bytes, alignment: int = 1) -> int:
+        """Add data to the Qvm's lit section.
 
         Args:
-            string: The string to add.
+            data: The data to add.
+            alignment: The added data's address will be a multiple of this.
 
         Returns:
-            The address of the added string.
+            The address of the added data.
         """
-        return self.add_data(string.encode() + b"\0", align=1)
+        return self._add_memory(RegionTag.LIT, data, alignment)
+
+    def add_bss(self, size: int, alignment: int = 1) -> int:
+        """Extend the Qvm's bss section.
+
+        Args:
+            size: The number of bytes to reserve.
+            alignment: The reserved address will be a multiple of this.
+
+        Returns:
+            The address of the reserved bytes.
+        """
+        self.memory.pad(alignment)
+        address = len(self.memory)
+        self.memory.add_bss(size)
+        return address
 
     def add_code(self, instructions: Iterable[Ins]) -> int:
         """Add code to the Qvm.
@@ -256,21 +277,21 @@ class Qvm:
 
             subprocess.check_output(command, env=env, stderr=subprocess.STDOUT)
 
-            self.new_data = pad(self.new_data, 4)
+            self.memory.pad(4)
 
             assembler = q3asm.Assembler()
             instructions, segments, symbols = assembler.assemble(
                 [asm_file.name],
                 code_base=len(self.instructions),
-                data_base=self._bss_end + len(self.new_data),
+                data_base=len(self.memory),
                 symbols=self.symbols,
             )
 
             self.instructions.extend(instructions)
 
             self.add_data(segments["data"].image)
-            self.add_data(segments["lit"].image)
-            self.add_data(segments["bss"].image)
+            self.add_lit(segments["lit"].image)
+            self.add_bss(len(segments["bss"].image))
 
             self.symbols.update(symbols)
 
@@ -285,9 +306,6 @@ class Qvm:
                 os.remove(asm_file.name)
 
     def _add_data_init_code(self) -> None:
-        if len(self.new_data) == 0:
-            return
-
         for init_name in ("G_InitGame", "CG_Init", "UI_Init"):
             original_init = self.symbols.get(init_name)
             if original_init is not None:
@@ -307,17 +325,46 @@ class Qvm:
 
         init_wrapper = self.add_code([Ins(Op.ENTER, 0x100)])
 
-        self.new_data = pad(self.new_data, 4)
-        for i in range(0, len(self.new_data), 4):
-            value = struct.unpack("<I", self.new_data[i : i + 4])[0]
-            if value != 0:
-                self.add_code(
-                    [
-                        Ins(Op.CONST, self._bss_end + i),
-                        Ins(Op.CONST, value),
-                        Ins(Op.STORE4),
-                    ]
-                )
+        # initialize new data
+        for region in self.memory.regions_with_tag(RegionTag.DATA):
+            begin, end = region.begin, region.end
+
+            # skip .qvm's data section
+            if (begin, end) == (0, self._data_length):
+                continue
+
+            for address in range(begin, end, 4):
+                value = struct.unpack("<I", self.memory[address : address + 4])[0]
+                if value != 0:
+                    self.add_code(
+                        [
+                            Ins(Op.CONST, address),
+                            Ins(Op.CONST, value),
+                            Ins(Op.STORE4),
+                        ]
+                    )
+
+        # initialize new lit
+        for region in self.memory.regions_with_tag(RegionTag.LIT):
+            begin, end = region.begin, region.end
+
+            # skip .qvm's lit section
+            if (begin, end) == (
+                self._data_length,
+                self._data_length + self._lit_length,
+            ):
+                continue
+
+            for address in range(begin, end):
+                value = self.memory[address]
+                if value != 0:
+                    self.add_code(
+                        [
+                            Ins(Op.CONST, address),
+                            Ins(Op.CONST, value),
+                            Ins(Op.STORE1),
+                        ]
+                    )
 
         self.add_code(
             [
@@ -364,3 +411,252 @@ class Qvm:
             self.instructions[call].operand = new
 
         return len(self._calls[old])
+
+
+class Memory:
+    """A Qvm's initial memory contents.
+
+    This class behaves much like a bytearray, but every byte has an associated
+    `RegionTag` that determines how it will be initialized. Because of this, appending
+    data is done with `add_data` or `add_bss` instead of the usual append or extend
+    methods.
+    """
+
+    def __init__(self) -> None:
+        """Initialize an empty Memory."""
+        self._regions: list[Region] = []
+        self._size = 0
+
+    @overload
+    def __getitem__(self, key: int) -> int:
+        ...
+
+    @overload
+    def __getitem__(self, key: slice) -> bytearray:
+        ...
+
+    def __getitem__(self, key):
+        """Return self[key]."""
+        if isinstance(key, int):
+            if key < 0:
+                key += len(self)
+            if not 0 <= key < len(self):
+                raise IndexError("Memory index out of range")
+
+            region = self.region_at(key)
+            if region is None:
+                return 0
+            else:
+                return region.contents[key - region.begin]
+
+        elif isinstance(key, slice):
+            key = slice(*key.indices(len(self)))
+            if key.step != 1:
+                raise IndexError("Memory slices do not support step")
+
+            result = bytearray()
+            position = key.start
+            for region in self.regions_overlapping(key.start, key.stop):
+                # pad until region begin
+                result.extend(b"\x00" * (region.begin - position))
+                position = region.end
+
+                begin = max(0, key.start - region.begin)
+                end = region.size - max(0, (region.end - key.stop))
+                result.extend(region.contents[begin:end])
+
+            # pad until slice end
+            result.extend(b"\x00" * (key.stop - position))
+            return result
+
+        else:
+            raise TypeError("Memory indices must be integers or slices")
+
+    @overload
+    def __setitem__(self, key: int, value: int) -> None:
+        ...
+
+    @overload
+    def __setitem__(self, key: slice, value: bytes) -> None:
+        ...
+
+    def __setitem__(self, key, value):
+        """Set self[key] to value.
+
+        Raises ValueError if key includes any BSS regions or if value does not have the
+        same size as the region being assigned to.
+        """
+        if isinstance(key, int):
+            if key < 0:
+                key += len(self)
+            if not 0 <= key < len(self):
+                raise IndexError("Memory index out of range")
+
+            region = self.region_at(key)
+            if region is None:
+                raise IndexError("cannot assign to BSS region")
+            else:
+                region.contents[key - region.begin] = value
+
+        elif isinstance(key, slice):
+            key = slice(*key.indices(len(self)))
+            if key.step != 1:
+                raise IndexError("Memory slices do not support step")
+
+            if max(0, key.stop - key.start) != len(value):
+                raise ValueError("value must have same size as slice")
+
+            regions = self.regions_overlapping(key.start, key.stop)
+            contains_bss = False
+
+            # check for gaps between key.start and key.stop
+            position = key.start
+            for region in regions:
+                if region.begin > position:
+                    break
+                position = region.end
+
+            if position < key.stop:
+                contains_bss = True
+
+            # if there were no intervals found and the range isn't empty then the whole
+            # thing is bss
+            if len(regions) == 0 and key.start < key.stop:
+                contains_bss = True
+
+            if contains_bss:
+                raise IndexError("cannot assign to BSS regions")
+
+            for region in regions:
+                src_begin = max(0, region.begin - key.start)
+                src_end = min(len(value), region.end - key.start)
+                dst_begin = max(0, key.start - region.begin)
+                dst_end = min(region.size, key.stop - region.begin)
+                region.contents[dst_begin:dst_end] = value[src_begin:src_end]
+
+        else:
+            raise TypeError("Memory indices must be integers or slices")
+
+    def __len__(self) -> int:
+        """Return len(self)."""
+        return self._size
+
+    def add_data(self, tag: RegionTag, data: bytes) -> None:
+        """Append initialized data.
+
+        If tag is `BSS` then data must be all zeros.
+
+        Args:
+            tag: The type of data being added.
+            data: The data to add.
+        """
+        if tag == RegionTag.BSS:
+            if any(byte != 0 for byte in data):
+                raise ValueError("BSS bytes must be zero")
+            self.add_bss(len(data))
+        else:
+            self._regions.append(
+                Region(self._size, self._size + len(data), tag, bytearray(data))
+            )
+            self._size += len(data)
+
+    def add_bss(self, size: int) -> None:
+        """Append zero-initialized data.
+
+        Args:
+            size: The number of bytes to add.
+        """
+        if size < 0:
+            raise ValueError("size must be non-negative")
+        self._size += size
+
+    def pad(self, alignment: int) -> None:
+        """Pad with with zeros to a multiple of the given alignment.
+
+        Does nothing if len(self) is already a multiple of alignment.
+
+        Args:
+            alignment: The requested alignment.
+        """
+        self._size = align(self._size, alignment)
+
+    def regions_with_tag(self, tag: RegionTag) -> Iterator[Region]:
+        """Find non-BSS regions with a given tag.
+
+        If tag is `BSS` no regions will be found.
+
+        Args:
+            tag: The tag of the regions to find.
+
+        Returns:
+            An iterator over all regions with the given tag.
+        """
+        for region in self._regions:
+            if region.tag == tag:
+                yield region
+
+    def region_at(self, position: int) -> Optional[Region]:
+        """Return the `Region` at the given position if one exists."""
+        regions = self.regions_overlapping(position, position + 1)
+        if len(regions) == 0:
+            return None
+        assert len(regions) == 1  # we shouldn't have created any overlaps
+        return regions[0]
+
+    def regions_overlapping(self, begin: int, end: int) -> list[Region]:
+        """Find every `Region` that overlaps [begin, end)."""
+        query = Region(begin, end)
+        first = max(bisect.bisect_left(self._regions, query), 0)
+        last = min(bisect.bisect_right(self._regions, query), len(self._regions))
+        return self._regions[first:last]
+
+
+class RegionTag(Enum):
+    """The type of data stored in a region of memory.
+
+    * DATA bytes are initialized as 32-bit values and may be byte-swapped depending on
+      the endianness of the interpreter.
+    * LIT bytes are initialized as-is.
+    * BSS bytes are initialized to zero and cannot be assigned to.
+    """
+
+    DATA = auto()
+    LIT = auto()
+    BSS = auto()
+
+
+class Region:
+    """A region of consecutive bytes with the same tag.
+
+    Attributes:
+        begin: The inclusive left bound of the region.
+        end: The exclusive right bound of the region.
+        tag: The type of data stored in the region.
+        contents: The data stored in the region.
+        size: The size of the region.
+    """
+
+    def __init__(
+        self,
+        begin: int,
+        end: int,
+        tag: Optional[RegionTag] = None,
+        contents: Optional[bytes] = None,
+    ) -> None:
+        """Initialize a region covering [begin, end) with the given tag and contents."""
+        self.begin = begin
+        self.end = end
+        self.tag = tag
+        self.contents = contents
+
+    def __lt__(self, other: Region) -> bool:
+        """Return True if other is to the left of self."""
+        return self.end <= other.begin
+
+    def __gt__(self, other: Region) -> bool:
+        """Return True if other is to the right of self."""
+        return self.begin >= other.end
+
+    @property
+    def size(self) -> int:
+        return self.end - self.begin
