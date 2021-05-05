@@ -159,7 +159,6 @@ class Assembler:
             bss.segment_base = lit.segment_base + len(lit.image)
             for seg in self.segments:
                 self.segments[seg].image = bytearray()
-            data.image = bytearray(b"\x00" * 4)
 
             instructions = []
 
