@@ -2,7 +2,9 @@ import argparse
 import logging
 import os
 import pathlib
+import platform
 import shutil
+import stat
 import subprocess
 import sys
 import unittest
@@ -29,13 +31,18 @@ def run_quake(args=None):
         args = "+set fs_game defrag +map defrag_gallery +quit"
 
     if sys.platform == "msys":
-        return subprocess.run(
-            f"winpty -Xallow-non-tty -Xplain ./oa_ded.exe {args}",
-            shell=True,
-            stdout=subprocess.PIPE,
-        )
+        quake = "winpty -Xallow-non-tty -Xplain ./oa_ded.exe"
+    elif sys.platform == "linux" and platform.machine() in ("i386", "x86_64"):
+        quake = f"./oa_ded.{platform.machine()}"
     else:
         raise unittest.SkipTest("unsupported platform")
+
+    return subprocess.run(
+        f"{quake} {args}",
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+    )
 
 
 def download(url, path, force=False):
@@ -80,7 +87,20 @@ def setup(args):
     )
     unzip("defrag_1.91.27.zip", "openarena-0.8.8")
 
-    os.chdir(pathlib.Path("openarena-0.8.8/defrag"))
+    os.chdir("openarena-0.8.8")
+    mode = (
+        stat.S_IRUSR
+        | stat.S_IWUSR
+        | stat.S_IXUSR
+        | stat.S_IRGRP
+        | stat.S_IXGRP
+        | stat.S_IROTH
+        | stat.S_IXOTH
+    )
+    os.chmod("oa_ded.i386", mode)
+    os.chmod("oa_ded.x86_64", mode)
+
+    os.chdir("defrag")
     unzip("zz-defrag_vm_191.pk3")
     os.remove("zz-defrag_vm_191.pk3")
 
