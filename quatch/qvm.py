@@ -99,8 +99,6 @@ class Qvm:
         self.symbols = dict(symbols or {})
         self.new_data = bytearray()
 
-        # TODO: what should happen if some of the original instructions are
-        # changed, invalidating this?
         self._calls = collections.defaultdict(list)
         for i in range(len(self.instructions) - 1):
             first, second = self.instructions[i : i + 2]
