@@ -354,10 +354,10 @@ class Qvm:
         Returns:
             The number of calls replaced.
         """
-        if not isinstance(old, int):
+        if isinstance(old, str):
             old = self.symbols[old]
 
-        if not isinstance(new, int):
+        if isinstance(new, str):
             new = self.symbols[new]
 
         for call in self._calls[old]:
