@@ -92,9 +92,9 @@ class Qvm:
             bss_length -= STACK_SIZE
 
             f.seek(data_offset)
-            self.add_data(f.read(self._data_length))
-            self.add_lit(f.read(self._lit_length))
-            self.add_bss(bss_length)
+            self.memory.add_data(f.read(self._data_length))
+            self.memory.add_lit(f.read(self._lit_length))
+            self.memory.add_bss(bss_length)
 
         self.symbols = dict(symbols or {})
 
@@ -146,57 +146,6 @@ class Qvm:
             )
             f.seek(0)
             f.write(header)
-
-    def _add_memory(self, tag: RegionTag, data: bytes, alignment: int = 1) -> int:
-        self.memory.align(alignment)
-        address = len(self.memory)
-        if len(data) != 0:
-            self.memory.add_data(tag, data)
-        return address
-
-    def add_data(self, data: bytes, alignment: int = 4) -> int:
-        """Add data to the Qvm's data section.
-
-        The data section is meant to hold aligned 4-byte words, so ``alignment`` and the
-        size of ``data`` must both be multiples of 4.
-
-        Args:
-            data: The data to add.
-            alignment: The added data's address will be a multiple of this.
-
-        Returns:
-            The address of the added data.
-        """
-        if len(data) % 4 != 0 or alignment % 4 != 0:
-            raise ValueError("data must be at least 4-byte aligned")
-        return self._add_memory(RegionTag.DATA, data, alignment)
-
-    def add_lit(self, data: bytes, alignment: int = 1) -> int:
-        """Add data to the Qvm's lit section.
-
-        Args:
-            data: The data to add.
-            alignment: The added data's address will be a multiple of this.
-
-        Returns:
-            The address of the added data.
-        """
-        return self._add_memory(RegionTag.LIT, data, alignment)
-
-    def add_bss(self, size: int, alignment: int = 1) -> int:
-        """Extend the Qvm's bss section.
-
-        Args:
-            size: The number of bytes to reserve.
-            alignment: The reserved address will be a multiple of this.
-
-        Returns:
-            The address of the reserved bytes.
-        """
-        self.memory.align(alignment)
-        address = len(self.memory)
-        self.memory.add_bss(size)
-        return address
 
     def add_code(self, instructions: Iterable[Ins]) -> int:
         """Add code to the Qvm.
@@ -291,9 +240,9 @@ class Qvm:
 
             self.instructions.extend(instructions)
 
-            self.add_data(segments["data"].image)
-            self.add_lit(segments["lit"].image)
-            self.add_bss(len(segments["bss"].image))
+            self.memory.add_data(segments["data"].image)
+            self.memory.add_lit(segments["lit"].image)
+            self.memory.add_bss(len(segments["bss"].image))
 
             self.symbols.update(symbols)
 
@@ -542,34 +491,84 @@ class Memory:
         """Return len(self)."""
         return self._size
 
-    def add_data(self, tag: RegionTag, data: bytes) -> None:
-        """Append initialized data.
+    def add_region(self, tag: RegionTag, data: bytes, alignment: int = 1) -> int:
+        """Add a new region of memory.
 
-        If tag is `BSS` then data must be all zeros.
+        DATA regions are meant hold to 4-byte words, so alignment and the size of data
+        must both be multiples of 4 if tag is `DATA`.
+
+        BSS regions are meant to hold zero-initialized data, so data must be all zeros
+        if tag is `BSS`.
 
         Args:
-            tag: The type of data being added.
+            tag: The type of region to add.
             data: The data to add.
+            alignment: The added data's address will be a multiple of this.
+
+        Returns:
+            The address of the added data.
         """
+        self.align(alignment)
+        address = len(self)
+
         if tag == RegionTag.BSS:
             if any(byte != 0 for byte in data):
                 raise ValueError("BSS bytes must be zero")
-            self.add_bss(len(data))
+            self._size += len(data)
         else:
+            if tag == RegionTag.DATA and (len(data) % 4 != 0 or alignment % 4 != 0):
+                raise ValueError("DATA regions must be at least 4-byte aligned")
+
             self._regions.append(
                 Region(self._size, self._size + len(data), tag, bytearray(data))
             )
             self._size += len(data)
 
-    def add_bss(self, size: int) -> None:
-        """Append zero-initialized data.
+        return address
+
+    def add_data(self, data: bytes, alignment: int = 4) -> int:
+        """Add a `DATA` region.
+
+        DATA regions are meant hold to 4-byte words, so alignment and the size of data
+        must both be multiples of 4.
 
         Args:
-            size: The number of bytes to add.
+            data: The data to add.
+            alignment: The added data's address will be a multiple of this.
+
+        Returns:
+            The address of the added data.
+        """
+        return self.add_region(RegionTag.DATA, data, alignment)
+
+    def add_lit(self, data: bytes, alignment: int = 1) -> int:
+        """Add a `LIT` region.
+
+        Args:
+            data: The data to add.
+            alignment: The added data's address will be a multiple of this.
+
+        Returns:
+            The address of the added data.
+        """
+        return self.add_region(RegionTag.LIT, data, alignment)
+
+    def add_bss(self, size: int, alignment: int = 1) -> int:
+        """Add a `BSS` region.
+
+        Args:
+            size: The number of BSS bytes to add.
+            alignment: The added data's address will be a multiple of this.
+
+        Returns:
+            The address of the added data.
         """
         if size < 0:
             raise ValueError("size must be non-negative")
+        self.align(alignment)
+        address = len(self)
         self._size += size
+        return address
 
     def align(self, alignment: int) -> None:
         """Pad with with zeros to a multiple of the given alignment.

@@ -18,10 +18,7 @@ class TestMemory(unittest.TestCase):
         )
 
         for tag, data in regions:
-            if tag == RegionTag.BSS:
-                self.memory.add_bss(len(data))
-            else:
-                self.memory.add_data(tag, data)
+            self.memory.add_region(tag, data)
             self.reference.extend(data)
 
     def test_getitem(self):
