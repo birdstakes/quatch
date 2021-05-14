@@ -52,7 +52,7 @@ class Qvm:
 
     Attributes:
         vm_magic: The "magic number" of the qvm file format version.
-        memory: Initial memory contents.
+        memory: The contents of the program's memory.
         instructions: Dissasembly of the code section.
         symbols: A dictionary mapping names to addresses.
     """
@@ -595,16 +595,31 @@ class Memory:
             if region.tag == tag:
                 yield region
 
-    def region_at(self, position: int) -> Optional[Region]:
-        """Return the `Region` at the given position if one exists."""
-        regions = self.regions_overlapping(position, position + 1)
+    def region_at(self, point: int) -> Optional[Region]:
+        """Find the `Region` overlapping a point.
+
+        Args:
+            point: The point the region must overlap.
+
+        Returns:
+            The region if it exists, otherwise None.
+        """
+        regions = self.regions_overlapping(point, point + 1)
         if len(regions) == 0:
             return None
         assert len(regions) == 1  # we shouldn't have created any overlaps
         return regions[0]
 
     def regions_overlapping(self, begin: int, end: int) -> list[Region]:
-        """Find every `Region` that overlaps [begin, end)."""
+        """Find every `Region` that overlaps the interval [begin, end).
+
+        Args:
+            begin: The inclusive left bound of the interval.
+            end: The exclusive right bound of the interval.
+
+        Returns:
+            All regions that overlap [begin, end).
+        """
         query = Region(begin, end)
         first = max(bisect.bisect_left(self._regions, query), 0)
         last = min(bisect.bisect_right(self._regions, query), len(self._regions))
@@ -650,11 +665,11 @@ class Region:
         self.contents = contents
 
     def __lt__(self, other: Region) -> bool:
-        """Return True if other is to the left of self."""
+        """Return True if self is to the left of other."""
         return self.end <= other.begin
 
     def __gt__(self, other: Region) -> bool:
-        """Return True if other is to the right of self."""
+        """Return True if self is to the right of other."""
         return self.begin >= other.end
 
     @property
