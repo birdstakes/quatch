@@ -167,6 +167,8 @@ class Qvm:
         Returns:
             The address of the added data.
         """
+        if len(data) % 4 != 0 or alignment % 4 != 0:
+            raise ValueError("data must be at least 4-byte aligned")
         return self._add_memory(RegionTag.DATA, data, alignment)
 
     def add_lit(self, data: bytes, alignment: int = 1) -> int:
