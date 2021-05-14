@@ -148,7 +148,7 @@ class Qvm:
             f.write(header)
 
     def _add_memory(self, tag: RegionTag, data: bytes, alignment: int = 1) -> int:
-        self.memory.pad(alignment)
+        self.memory.align(alignment)
         address = len(self.memory)
         if len(data) != 0:
             self.memory.add_data(tag, data)
@@ -193,7 +193,7 @@ class Qvm:
         Returns:
             The address of the reserved bytes.
         """
-        self.memory.pad(alignment)
+        self.memory.align(alignment)
         address = len(self.memory)
         self.memory.add_bss(size)
         return address
@@ -279,7 +279,7 @@ class Qvm:
 
             subprocess.check_output(command, env=env, stderr=subprocess.STDOUT)
 
-            self.memory.pad(4)
+            self.memory.align(4)
 
             assembler = q3asm.Assembler()
             instructions, segments, symbols = assembler.assemble(
@@ -571,7 +571,7 @@ class Memory:
             raise ValueError("size must be non-negative")
         self._size += size
 
-    def pad(self, alignment: int) -> None:
+    def align(self, alignment: int) -> None:
         """Pad with with zeros to a multiple of the given alignment.
 
         Does nothing if len(self) is already a multiple of alignment.
