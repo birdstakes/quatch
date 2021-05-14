@@ -457,7 +457,7 @@ class Memory:
             result = bytearray()
             position = key.start
             for region in self.regions_overlapping(key.start, key.stop):
-                # pad until region begin
+                # anything not covered by a region is BSS
                 result.extend(b"\x00" * (region.begin - position))
                 position = region.end
 
@@ -465,7 +465,6 @@ class Memory:
                 end = region.size - max(0, (region.end - key.stop))
                 result.extend(region.contents[begin:end])
 
-            # pad until slice end
             result.extend(b"\x00" * (key.stop - position))
             return result
 
@@ -519,7 +518,7 @@ class Memory:
             if position < key.stop:
                 contains_bss = True
 
-            # if there were no intervals found and the range isn't empty then the whole
+            # if there were no regions found and the slice isn't empty then the whole
             # thing is bss
             if len(regions) == 0 and key.start < key.stop:
                 contains_bss = True
