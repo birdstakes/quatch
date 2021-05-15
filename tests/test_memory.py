@@ -18,7 +18,7 @@ class TestMemory(unittest.TestCase):
         )
 
         for tag, data in regions:
-            self.memory.add_region(tag, data)
+            self.memory.add_region(tag, data=data)
             self.reference.extend(data)
 
     def test_getitem(self):

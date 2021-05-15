@@ -91,9 +91,9 @@ class Qvm:
             bss_length -= STACK_SIZE
 
             f.seek(data_offset)
-            self.memory.add_data(f.read(self._data_length))
-            self.memory.add_lit(f.read(self._lit_length))
-            self.memory.add_bss(bss_length)
+            self.add_data(f.read(self._data_length))
+            self.add_lit(f.read(self._lit_length))
+            self.add_bss(bss_length)
 
         self.symbols = dict(symbols or {})
 
@@ -145,6 +145,45 @@ class Qvm:
             )
             f.seek(0)
             f.write(header)
+
+    def add_data(self, data: bytes, alignment: int = 4) -> int:
+        """Add data to the DATA section.
+
+        The DATA section is meant hold to 4-byte words, so alignment and the size of
+        data must both be multiples of 4.
+
+        Args:
+            data: The data to add.
+            alignment: The added data's address will be a multiple of this.
+
+        Returns:
+            The address of the added data.
+        """
+        return self.memory.add_region(RegionTag.DATA, data=data, alignment=alignment)
+
+    def add_lit(self, data: bytes, alignment: int = 1) -> int:
+        """Add data to the LIT section.
+
+        Args:
+            data: The data to add.
+            alignment: The added data's address will be a multiple of this.
+
+        Returns:
+            The address of the added data.
+        """
+        return self.memory.add_region(RegionTag.LIT, data=data, alignment=alignment)
+
+    def add_bss(self, size: int, alignment: int = 1) -> int:
+        """Add data to the BSS section.
+
+        Args:
+            size: The number of BSS bytes to add.
+            alignment: The added data's address will be a multiple of this.
+
+        Returns:
+            The address of the added data.
+        """
+        return self.memory.add_region(RegionTag.BSS, size=size, alignment=alignment)
 
     def add_code(self, instructions: Iterable[Ins]) -> int:
         """Add code to the Qvm.
@@ -239,9 +278,9 @@ class Qvm:
 
             self.instructions.extend(instructions)
 
-            self.memory.add_data(segments["data"].image)
-            self.memory.add_lit(segments["lit"].image)
-            self.memory.add_bss(len(segments["bss"].image))
+            self.add_data(segments["data"].image)
+            self.add_lit(segments["lit"].image)
+            self.add_bss(len(segments["bss"].image))
 
             self.symbols.update(symbols)
 

@@ -31,8 +31,7 @@ class Memory:
 
     This class behaves much like a bytearray, but every byte has an associated
     `RegionTag` that determines how it will be initialized. Because of this, appending
-    data is done with `add_data` or `add_bss` instead of the usual append or extend
-    methods.
+    data is done with `add_region` instead of the usual append or extend methods.
     """
 
     def __init__(self) -> None:
@@ -57,7 +56,7 @@ class Memory:
                 raise IndexError("Memory index out of range")
 
             region = self.region_at(key)
-            if region is None:
+            if region is None or region.contents is None:
                 return 0
             else:
                 return region.contents[key - region.begin]
@@ -70,13 +69,16 @@ class Memory:
             result = bytearray()
             position = key.start
             for region in self.regions_overlapping(key.start, key.stop):
-                # anything not covered by a region is BSS
+                # gaps caused by align() should be filled with zeros
                 result.extend(b"\x00" * (region.begin - position))
                 position = region.end
 
                 begin = max(0, key.start - region.begin)
                 end = region.size - max(0, (region.end - key.stop))
-                result.extend(region.contents[begin:end])
+                if region.contents is None:
+                    result.extend(b"\x00" * (end - begin))
+                else:
+                    result.extend(region.contents[begin:end])
 
             result.extend(b"\x00" * (key.stop - position))
             return result
@@ -95,8 +97,8 @@ class Memory:
     def __setitem__(self, key, value):
         """Set self[key] to value.
 
-        Raises ValueError if key includes any BSS regions or if value does not have the
-        same size as the region being assigned to.
+        Raises ValueError if key includes any padding or BSS regions or if value does
+        not have the same size as the region being assigned to.
         """
         if isinstance(key, int):
             if key < 0:
@@ -105,8 +107,8 @@ class Memory:
                 raise IndexError("Memory index out of range")
 
             region = self.region_at(key)
-            if region is None:
-                raise IndexError("cannot assign to BSS region")
+            if region is None or region.contents is None:
+                raise IndexError("cannot assign to padding or BSS")
             else:
                 region.contents[key - region.begin] = value
 
@@ -118,26 +120,29 @@ class Memory:
             if max(0, key.stop - key.start) != len(value):
                 raise ValueError("value must have same size as slice")
 
+            if key.stop <= key.start:
+                return
+
             regions = self.regions_overlapping(key.start, key.stop)
-            contains_bss = False
+            writable = True
 
             # check for gaps between key.start and key.stop
             position = key.start
             for region in regions:
-                if region.begin > position:
+                if region.begin > position or region.contents is None:
                     break
                 position = region.end
 
             if position < key.stop:
-                contains_bss = True
+                writable = False
 
             # if there were no regions found and the slice isn't empty then the whole
-            # thing is bss
+            # thing is padding
             if len(regions) == 0 and key.start < key.stop:
-                contains_bss = True
+                writable = False
 
-            if contains_bss:
-                raise IndexError("cannot assign to BSS regions")
+            if not writable:
+                raise IndexError("cannot assign to padding or BSS")
 
             for region in regions:
                 src_begin = max(0, region.begin - key.start)
@@ -153,83 +158,64 @@ class Memory:
         """Return len(self)."""
         return self._size
 
-    def add_region(self, tag: RegionTag, data: bytes, alignment: int = 1) -> int:
+    def add_region(
+        self,
+        tag: RegionTag,
+        *,
+        data: Optional[bytes] = None,
+        size: Optional[int] = None,
+        alignment: int = 1
+    ) -> int:
         """Add a new region of memory.
+
+        Exactly one of data or size must be provided. Providing size will fill the
+        region with zeros.
 
         DATA regions are meant hold to 4-byte words, so alignment and the size of data
         must both be multiples of 4 if tag is `DATA`.
 
         BSS regions are meant to hold zero-initialized data, so data must be all zeros
-        if tag is `BSS`.
+        or size must be used if tag is `BSS`.
 
         Args:
             tag: The type of region to add.
             data: The data to add.
+            size: The size of the region to add.
             alignment: The added data's address will be a multiple of this.
 
         Returns:
             The address of the added data.
         """
-        self.align(alignment)
-        address = len(self)
-
-        if tag == RegionTag.BSS:
-            if any(byte != 0 for byte in data):
-                raise ValueError("BSS bytes must be zero")
-            self._size += len(data)
-        else:
-            if tag == RegionTag.DATA and (len(data) % 4 != 0 or alignment % 4 != 0):
-                raise ValueError("DATA regions must be at least 4-byte aligned")
-
-            self._regions.append(
-                Region(self._size, self._size + len(data), tag, bytearray(data))
-            )
-            self._size += len(data)
-
-        return address
-
-    def add_data(self, data: bytes, alignment: int = 4) -> int:
-        """Add a `DATA` region.
-
-        DATA regions are meant hold to 4-byte words, so alignment and the size of data
-        must both be multiples of 4.
-
-        Args:
-            data: The data to add.
-            alignment: The added data's address will be a multiple of this.
-
-        Returns:
-            The address of the added data.
-        """
-        return self.add_region(RegionTag.DATA, data, alignment)
-
-    def add_lit(self, data: bytes, alignment: int = 1) -> int:
-        """Add a `LIT` region.
-
-        Args:
-            data: The data to add.
-            alignment: The added data's address will be a multiple of this.
-
-        Returns:
-            The address of the added data.
-        """
-        return self.add_region(RegionTag.LIT, data, alignment)
-
-    def add_bss(self, size: int, alignment: int = 1) -> int:
-        """Add a `BSS` region.
-
-        Args:
-            size: The number of BSS bytes to add.
-            alignment: The added data's address will be a multiple of this.
-
-        Returns:
-            The address of the added data.
-        """
-        if size < 0:
+        if data is None and size is None:
+            raise TypeError("one of data or size must be provided")
+        if data is not None and size is not None:
+            raise TypeError("only one of data or size can be provided")
+        if size is not None and size < 0:
             raise ValueError("size must be non-negative")
+
         self.align(alignment)
         address = len(self)
-        self._size += size
+
+        if data is not None:
+            size = len(data)
+            if tag == RegionTag.BSS:
+                if any(byte != 0 for byte in data):
+                    raise ValueError("BSS bytes must be zero")
+                data = None
+            else:
+                data = bytearray(data)
+        else:
+            assert size is not None
+            if tag != RegionTag.BSS:
+                data = bytearray(size)
+
+        if tag == RegionTag.DATA and (size % 4 != 0 or alignment % 4 != 0):
+            raise ValueError("DATA regions must be at least 4-byte aligned")
+
+        if size != 0:
+            self._regions.append(Region(self._size, self._size + size, tag, data))
+            self._size += size
+
         return address
 
     def align(self, alignment: int) -> None:
@@ -282,6 +268,8 @@ class Memory:
         Returns:
             All regions that overlap [begin, end).
         """
+        if end <= begin:
+            return []
         query = Region(begin, end)
         first = max(bisect.bisect_left(self._regions, query), 0)
         last = min(bisect.bisect_right(self._regions, query), len(self._regions))
