@@ -229,15 +229,13 @@ class Memory:
         self._size = align(self._size, alignment)
 
     def regions_with_tag(self, tag: RegionTag) -> Iterator[Region]:
-        """Find non-BSS regions with a given tag.
-
-        If tag is `BSS` no regions will be found.
+        """Find all regions with a given tag.
 
         Args:
             tag: The tag of the regions to find.
 
         Returns:
-            An iterator over all regions with the given tag.
+            An iterator over all the regions found.
         """
         for region in self._regions:
             if region.tag == tag:
