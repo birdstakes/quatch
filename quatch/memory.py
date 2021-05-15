@@ -50,11 +50,7 @@ class Memory:
     def __getitem__(self, key):
         """Return self[key]."""
         if isinstance(key, int):
-            if key < 0:
-                key += len(self)
-            if not 0 <= key < len(self):
-                raise IndexError("Memory index out of range")
-
+            key = self._check_index(key)
             region = self.region_at(key)
             if region is None or region.contents is None:
                 return 0
@@ -62,10 +58,7 @@ class Memory:
                 return region.contents[key - region.begin]
 
         elif isinstance(key, slice):
-            key = slice(*key.indices(len(self)))
-            if key.step != 1:
-                raise IndexError("Memory slices do not support step")
-
+            key = self._check_slice(key)
             result = bytearray()
             position = key.start
             for region in self.regions_overlapping(key.start, key.stop):
@@ -84,7 +77,7 @@ class Memory:
             return result
 
         else:
-            raise TypeError("Memory indices must be integers or slices")
+            raise TypeError("indices must be integers or slices")
 
     @overload
     def __setitem__(self, key: int, value: int) -> None:
@@ -101,11 +94,7 @@ class Memory:
         not have the same size as the region being assigned to.
         """
         if isinstance(key, int):
-            if key < 0:
-                key += len(self)
-            if not 0 <= key < len(self):
-                raise IndexError("Memory index out of range")
-
+            key = self._check_index(key)
             region = self.region_at(key)
             if region is None or region.contents is None:
                 raise IndexError("cannot assign to padding or BSS")
@@ -113,10 +102,7 @@ class Memory:
                 region.contents[key - region.begin] = value
 
         elif isinstance(key, slice):
-            key = slice(*key.indices(len(self)))
-            if key.step != 1:
-                raise IndexError("Memory slices do not support step")
-
+            key = self._check_slice(key)
             if max(0, key.stop - key.start) != len(value):
                 raise ValueError("value must have same size as slice")
 
@@ -152,7 +138,20 @@ class Memory:
                 region.contents[dst_begin:dst_end] = value[src_begin:src_end]
 
         else:
-            raise TypeError("Memory indices must be integers or slices")
+            raise TypeError("indices must be integers or slices")
+
+    def _check_index(self, key: int) -> int:
+        if key < 0:
+            key += len(self)
+        if not 0 <= key < len(self):
+            raise IndexError("index out of range")
+        return key
+
+    def _check_slice(self, key: slice) -> slice:
+        key = slice(*key.indices(len(self)))
+        if key.step != 1:
+            raise IndexError("step slicing is not support step")
+        return key
 
     def __len__(self) -> int:
         """Return len(self)."""
