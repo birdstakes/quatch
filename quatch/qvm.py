@@ -36,6 +36,8 @@ from .util import pad
 
 
 STACK_SIZE = 0x10000
+HEADER_FORMAT = "<IIIIIIII"
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
 
 class InitSymbolError(Exception):
@@ -64,8 +66,6 @@ class Qvm:
             symbols: A mapping from names to addresses.
         """
         with open(path, "rb") as f:
-            format = "<IIIIIIII"
-            raw_header = f.read(struct.calcsize(format))
             (
                 self.vm_magic,
                 instruction_count,
@@ -75,7 +75,7 @@ class Qvm:
                 self._data_length,
                 self._lit_length,
                 bss_length,
-            ) = struct.unpack(format, raw_header)
+            ) = struct.unpack(HEADER_FORMAT, f.read(HEADER_SIZE))
 
             f.seek(code_offset)
             self.instructions = disassemble(f.read(code_length))
@@ -121,9 +121,7 @@ class Qvm:
         self._add_data_init_code()
 
         with open(path, "wb") as f:
-            format = "<IIIIIIII"
-            header_size = struct.calcsize(format)
-            f.seek(header_size)
+            f.seek(HEADER_SIZE)
 
             code_offset = f.tell()
             code = pad(assemble(self.instructions), 4)
@@ -132,19 +130,24 @@ class Qvm:
             data_offset = f.tell()
             f.write(self.memory[: self._data_length + self._lit_length])
 
-            header = struct.pack(
-                format,
-                self.vm_magic,
-                len(self.instructions),
-                code_offset,
-                len(code),
-                data_offset,
-                self._data_length,
-                self._lit_length,
-                len(self.memory) - self._data_length - self._lit_length + STACK_SIZE,
+            bss_length = (
+                len(self.memory) - self._data_length - self._lit_length + STACK_SIZE
             )
+
             f.seek(0)
-            f.write(header)
+            f.write(
+                struct.pack(
+                    HEADER_FORMAT,
+                    self.vm_magic,
+                    len(self.instructions),
+                    code_offset,
+                    len(code),
+                    data_offset,
+                    self._data_length,
+                    self._lit_length,
+                    bss_length,
+                )
+            )
 
     def add_data(self, data: bytes, alignment: int = 4) -> int:
         """Add data to the DATA section.
