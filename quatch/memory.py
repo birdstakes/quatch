@@ -150,7 +150,7 @@ class Memory:
     def _check_slice(self, key: slice) -> slice:
         key = slice(*key.indices(len(self)))
         if key.step != 1:
-            raise IndexError("step slicing is not support step")
+            raise IndexError("step slicing is not supported")
         return key
 
     def __len__(self) -> int:
