@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Quatch; If not, see <https://www.gnu.org/licenses/>.
 
-"""This module contains the Qvm class and associated exceptions."""
+"""This module contains the main Qvm class."""
 
 from __future__ import annotations
 
@@ -31,6 +31,7 @@ from collections.abc import Iterable, Mapping
 from typing import Optional, Union
 from . import q3asm
 from .instruction import assemble, disassemble, Instruction as Ins, Opcode as Op
+from .memory import Memory, RegionTag
 from .util import pad
 
 
@@ -50,13 +51,9 @@ class Qvm:
 
     Attributes:
         vm_magic: The "magic number" of the qvm file format version.
-        data: Combined contents of the data and lit sections.
-        data_length: Length of the data section.
-        lit_length: Length of the lit section.
-        bss_length: Length of the bss section.
+        memory: The contents of the program's memory.
         instructions: Dissasembly of the code section.
         symbols: A dictionary mapping names to addresses.
-        new_data: Data that has been added to the qvm since loading it.
     """
 
     def __init__(self, path: str, symbols: Optional[Mapping[str, int]] = None) -> None:
@@ -75,17 +72,10 @@ class Qvm:
                 code_offset,
                 code_length,
                 data_offset,
-                self.data_length,
-                self.lit_length,
-                self.bss_length,
+                self._data_length,
+                self._lit_length,
+                bss_length,
             ) = struct.unpack(format, raw_header)
-
-            # STACK_SIZE bytes are reserved at the end of bss for use as the program
-            # stack. We are going to use it for our own data and reserve STACK_SIZE
-            # more bytes at the end when we're done.
-            self.bss_length -= STACK_SIZE
-
-            self._bss_end = self.data_length + self.lit_length + self.bss_length
 
             f.seek(code_offset)
             self.instructions = disassemble(f.read(code_length))
@@ -93,11 +83,19 @@ class Qvm:
             # strip off trailing instructions that are actually just padding
             self.instructions = self.instructions[:instruction_count]
 
+            self.memory = Memory()
+
+            # STACK_SIZE bytes are reserved at the end of bss for use as the program
+            # stack. We are going to use it for our own data and reserve STACK_SIZE
+            # more bytes at the end when we're done.
+            bss_length -= STACK_SIZE
+
             f.seek(data_offset)
-            self.data = f.read(self.data_length + self.lit_length)
+            self.add_data(f.read(self._data_length))
+            self.add_lit(f.read(self._lit_length))
+            self.add_bss(bss_length)
 
         self.symbols = dict(symbols or {})
-        self.new_data = bytearray()
 
         self._calls = collections.defaultdict(list)
         for i in range(len(self.instructions) - 1):
@@ -132,48 +130,60 @@ class Qvm:
             f.write(code)
 
             data_offset = f.tell()
-            f.write(self.data)
+            f.write(self.memory[: self._data_length + self._lit_length])
 
-            f.seek(0)
-            f.write(
-                struct.pack(
-                    format,
-                    self.vm_magic,
-                    len(self.instructions),
-                    code_offset,
-                    len(code),
-                    data_offset,
-                    self.data_length,
-                    self.lit_length,
-                    self.bss_length + len(self.new_data) + STACK_SIZE,
-                )
+            header = struct.pack(
+                format,
+                self.vm_magic,
+                len(self.instructions),
+                code_offset,
+                len(code),
+                data_offset,
+                self._data_length,
+                self._lit_length,
+                len(self.memory) - self._data_length - self._lit_length + STACK_SIZE,
             )
+            f.seek(0)
+            f.write(header)
 
-    def add_data(self, data: bytes, align: int = 4) -> int:
-        """Add data to the Qvm.
+    def add_data(self, data: bytes, alignment: int = 4) -> int:
+        """Add data to the DATA section.
+
+        The DATA section is meant hold to 4-byte words, so alignment and the size of
+        data must both be multiples of 4.
 
         Args:
             data: The data to add.
-            align: The added data's address will be a multiple of this.
+            alignment: The added data's address will be a multiple of this.
 
         Returns:
             The address of the added data.
         """
-        self.new_data = pad(self.new_data, align)
-        address = self._bss_end + len(self.new_data)
-        self.new_data.extend(data)
-        return address
+        return self.memory.add_region(RegionTag.DATA, data=data, alignment=alignment)
 
-    def add_string(self, string: str) -> int:
-        """Add a string to the Qvm.
+    def add_lit(self, data: bytes, alignment: int = 1) -> int:
+        """Add data to the LIT section.
 
         Args:
-            string: The string to add.
+            data: The data to add.
+            alignment: The added data's address will be a multiple of this.
 
         Returns:
-            The address of the added string.
+            The address of the added data.
         """
-        return self.add_data(string.encode() + b"\0", align=1)
+        return self.memory.add_region(RegionTag.LIT, data=data, alignment=alignment)
+
+    def add_bss(self, size: int, alignment: int = 1) -> int:
+        """Add data to the BSS section.
+
+        Args:
+            size: The number of BSS bytes to add.
+            alignment: The added data's address will be a multiple of this.
+
+        Returns:
+            The address of the added data.
+        """
+        return self.memory.add_region(RegionTag.BSS, size=size, alignment=alignment)
 
     def add_code(self, instructions: Iterable[Ins]) -> int:
         """Add code to the Qvm.
@@ -256,21 +266,21 @@ class Qvm:
 
             subprocess.check_output(command, env=env, stderr=subprocess.STDOUT)
 
-            self.new_data = pad(self.new_data, 4)
+            self.memory.align(4)
 
             assembler = q3asm.Assembler()
             instructions, segments, symbols = assembler.assemble(
                 [asm_file.name],
                 code_base=len(self.instructions),
-                data_base=self._bss_end + len(self.new_data),
+                data_base=len(self.memory),
                 symbols=self.symbols,
             )
 
             self.instructions.extend(instructions)
 
             self.add_data(segments["data"].image)
-            self.add_data(segments["lit"].image)
-            self.add_data(segments["bss"].image)
+            self.add_lit(segments["lit"].image)
+            self.add_bss(len(segments["bss"].image))
 
             self.symbols.update(symbols)
 
@@ -285,9 +295,6 @@ class Qvm:
                 os.remove(asm_file.name)
 
     def _add_data_init_code(self) -> None:
-        if len(self.new_data) == 0:
-            return
-
         for init_name in ("G_InitGame", "CG_Init", "UI_Init"):
             original_init = self.symbols.get(init_name)
             if original_init is not None:
@@ -307,17 +314,46 @@ class Qvm:
 
         init_wrapper = self.add_code([Ins(Op.ENTER, 0x100)])
 
-        self.new_data = pad(self.new_data, 4)
-        for i in range(0, len(self.new_data), 4):
-            value = struct.unpack("<I", self.new_data[i : i + 4])[0]
-            if value != 0:
-                self.add_code(
-                    [
-                        Ins(Op.CONST, self._bss_end + i),
-                        Ins(Op.CONST, value),
-                        Ins(Op.STORE4),
-                    ]
-                )
+        # initialize new data
+        for region in self.memory.regions_with_tag(RegionTag.DATA):
+            begin, end = region.begin, region.end
+
+            # skip .qvm's data section
+            if (begin, end) == (0, self._data_length):
+                continue
+
+            for address in range(begin, end, 4):
+                value = struct.unpack("<I", self.memory[address : address + 4])[0]
+                if value != 0:
+                    self.add_code(
+                        [
+                            Ins(Op.CONST, address),
+                            Ins(Op.CONST, value),
+                            Ins(Op.STORE4),
+                        ]
+                    )
+
+        # initialize new lit
+        for region in self.memory.regions_with_tag(RegionTag.LIT):
+            begin, end = region.begin, region.end
+
+            # skip .qvm's lit section
+            if (begin, end) == (
+                self._data_length,
+                self._data_length + self._lit_length,
+            ):
+                continue
+
+            for address in range(begin, end):
+                value = self.memory[address]
+                if value != 0:
+                    self.add_code(
+                        [
+                            Ins(Op.CONST, address),
+                            Ins(Op.CONST, value),
+                            Ins(Op.STORE1),
+                        ]
+                    )
 
         self.add_code(
             [
