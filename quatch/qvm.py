@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import mmap
 import os
 import shutil
 import struct
@@ -32,7 +33,7 @@ from typing import Optional, Union
 from . import q3asm
 from .instruction import assemble, disassemble, Instruction as Ins, Opcode as Op
 from .memory import Memory, RegionTag
-from .util import pad
+from .util import crc32, forge_crc32, pad
 
 
 STACK_SIZE = 0x10000
@@ -95,6 +96,9 @@ class Qvm:
             self.add_lit(f.read(self._lit_length))
             self.add_bss(bss_length)
 
+            f.seek(0)
+            self._original_crc = crc32(f.read())
+
         self.symbols = dict(symbols or {})
 
         self._calls = collections.defaultdict(list)
@@ -105,7 +109,7 @@ class Qvm:
 
         self._lcc = self._find_lcc()
 
-    def write(self, path: str) -> None:
+    def write(self, path: str, forge_crc: bool = False) -> None:
         """Write a .qvm file.
 
         Requires a symbol to be defined for one of the G_InitGame, CG_Init, or UI_Init
@@ -114,13 +118,15 @@ class Qvm:
 
         Args:
             path: Path of the .qvm file to write.
+            forge_crc: Whether to force the CRC-32 checksum of the patched .qvm file to
+              be the same as the original.
 
         Raises:
             InitSymbolError: No valid G_InitGame, CG_Init, or UI_Init symbol was found.
         """
         self._add_data_init_code()
 
-        with open(path, "wb") as f:
+        with open(path, "w+b") as f:
             f.seek(HEADER_SIZE)
 
             code_offset = f.tell()
@@ -148,6 +154,13 @@ class Qvm:
                     bss_length,
                 )
             )
+
+            if forge_crc:
+                f.flush()
+                with mmap.mmap(f.fileno(), 0) as mm:
+                    # we'll let forge_crc32 overwrite the first 4 bytes of the data
+                    # section since nobody should be using address 0
+                    forge_crc32(mm, data_offset, self._original_crc)
 
     def add_data(self, data: bytes, alignment: int = 4) -> int:
         """Add data to the DATA section.
