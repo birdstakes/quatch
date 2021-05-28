@@ -46,6 +46,15 @@ Note that a symbol must always be provided for G_InitGame, CG_Init, or UI_Init s
 Quatch can install a hook to initialize any added data.
 """
 
-from .qvm import Qvm
+from ._instruction import assemble, disassemble, Instruction, Opcode
+from ._qvm import CompilerError, InitSymbolError, Qvm
 
-__all__ = ["Qvm"]
+__all__ = [
+    "assemble",
+    "disassemble",
+    "CompilerError",
+    "InitSymbolError",
+    "Instruction",
+    "Opcode",
+    "Qvm",
+]

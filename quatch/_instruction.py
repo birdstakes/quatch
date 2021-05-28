@@ -127,7 +127,7 @@ class Instruction:
 
     Example usage:
 
-        >>> from quatch.instruction import Instruction, Opcode
+        >>> from quatch import Instruction, Opcode
         >>> Instruction(Opcode.PUSH)
         Instruction(Opcode.PUSH)
         >>> Instruction(Opcode.CONST, 123)
@@ -198,7 +198,7 @@ class Instruction:
 
         Example usage:
 
-            >>> from quatch.instruction import Instruction, Opcode
+            >>> from quatch import Instruction, Opcode
             >>> Instruction(Opcode.PUSH).assemble()
             b'\x06'
             >>> Instruction(Opcode.CONST, 123).assemble()
@@ -219,8 +219,8 @@ def assemble(instructions: Iterable[Instruction]) -> bytes:
 
     Example usage:
 
-        >>> from quatch.instruction import Instruction as Ins, Opcode as Op
-        >>> from quatch.instruction import assemble
+        >>> from quatch import Instruction as Ins, Opcode as Op
+        >>> from quatch import assemble
         >>> assemble([Ins(Op.PUSH), Ins(Op.CONST, 123)])
         bytearray(b'\x06\x08{\x00\x00\x00')
     """
@@ -235,7 +235,7 @@ def disassemble(code: bytes) -> list[Instruction]:
 
     Example usage:
 
-        >>> from quatch.instruction import disassemble
+        >>> from quatch import disassemble
         >>> disassemble(b'\x06\x08\x7b\x00\x00\x00')
         [Instruction(Opcode.PUSH), Instruction(Opcode.CONST, 0x7b)]
     """

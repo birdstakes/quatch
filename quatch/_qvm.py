@@ -30,10 +30,10 @@ import sys
 import tempfile
 from collections.abc import Iterable, Mapping
 from typing import Optional, Union
-from . import q3asm
-from .instruction import assemble, disassemble, Instruction as Ins, Opcode as Op
-from .memory import Memory, RegionTag
-from .util import crc32, forge_crc32, pad
+from ._instruction import assemble, disassemble, Instruction as Ins, Opcode as Op
+from ._memory import Memory, RegionTag
+from ._q3asm import Assembler
+from ._util import crc32, forge_crc32, pad
 
 
 STACK_SIZE = 0x10000
@@ -253,7 +253,7 @@ class Qvm:
 
             self.memory.align(4)
 
-            assembler = q3asm.Assembler()
+            assembler = Assembler()
             instructions, segments, symbols = assembler.assemble(
                 [asm_file.name],
                 code_base=len(self.instructions),

@@ -23,7 +23,7 @@ import bisect
 from collections.abc import Iterator
 from enum import auto, Enum
 from typing import overload, Optional
-from .util import align
+from ._util import align
 
 
 class Memory:

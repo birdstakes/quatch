@@ -1,5 +1,5 @@
 import unittest
-from quatch.memory import Memory, RegionTag
+from quatch._memory import Memory, RegionTag
 
 
 class TestMemory(unittest.TestCase):
