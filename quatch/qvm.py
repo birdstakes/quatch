@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Quatch; If not, see <https://www.gnu.org/licenses/>.
 
-"""This module contains the main Qvm class."""
+"""A class for loading and patching .qvm files."""
 
 from __future__ import annotations
 
@@ -53,18 +53,17 @@ class Qvm:
     """A patchable Quake 3 VM program.
 
     Attributes:
-        vm_magic: The "magic number" of the qvm file format version.
+        vm_magic: The magic number of the qvm file format version.
         memory: The contents of the program's memory.
         instructions: Dissasembly of the code section.
-        symbols: A dictionary mapping names to addresses.
+        symbols: A dictionary mapping symbol names to addresses.
     """
 
-    def __init__(self, path: str, symbols: Optional[Mapping[str, int]] = None) -> None:
-        """Initialize Qvm from a .qvm file.
+    def __init__(self, path: str, symbols: Mapping[str, int] = None) -> None:
+        """Initialize a Qvm from a .qvm file.
 
-        Args:
-            path: Path of the .qvm file to read.
-            symbols: A mapping from names to addresses.
+        A mapping from names to addresses may be provided in symbols. Anything defined
+        here will be available from C code added with self.add_c_code.
         """
         with open(path, "rb") as f:
             (
@@ -112,17 +111,12 @@ class Qvm:
     def write(self, path: str, forge_crc: bool = False) -> None:
         """Write a .qvm file.
 
-        Requires a symbol to be defined for one of the G_InitGame, CG_Init, or UI_Init
-        functions if any new data has been added so that it can be initialized by
-        hooking the function.
+        If forge_crc is True, the resulting file will have the same CRC-32 checksum as
+        the original .qvm file.
 
-        Args:
-            path: Path of the .qvm file to write.
-            forge_crc: Whether to force the CRC-32 checksum of the patched .qvm file to
-              be the same as the original.
-
-        Raises:
-            InitSymbolError: No valid G_InitGame, CG_Init, or UI_Init symbol was found.
+        New data will be initialized by hooking one of the G_InitGame, CG_Init, or
+        UI_Init functions. An InitSymbolError exception will be raised if a valid symbol
+        for one of these functions cannot be found.
         """
         self._add_data_init_code()
 
@@ -163,53 +157,28 @@ class Qvm:
                     forge_crc32(mm, data_offset, self._original_crc)
 
     def add_data(self, data: bytes, alignment: int = 4) -> int:
-        """Add data to the DATA section.
+        """Add data to the DATA section and return its address.
 
-        The DATA section is meant hold to 4-byte words, so alignment and the size of
-        data must both be multiples of 4.
-
-        Args:
-            data: The data to add.
-            alignment: The added data's address will be a multiple of this.
-
-        Returns:
-            The address of the added data.
+        The DATA section is meant hold to 4-byte words that will be byte-swapped at
+        load time if needed, so alignment and the size of data must both be multiples
+        of 4.
         """
         return self.memory.add_region(RegionTag.DATA, data=data, alignment=alignment)
 
     def add_lit(self, data: bytes, alignment: int = 1) -> int:
-        """Add data to the LIT section.
+        """Add data to the LIT section and return its address.
 
-        Args:
-            data: The data to add.
-            alignment: The added data's address will be a multiple of this.
-
-        Returns:
-            The address of the added data.
+        The LIT section is meant to hold data that never needs to be byte-swapped, such
+        as strings.
         """
         return self.memory.add_region(RegionTag.LIT, data=data, alignment=alignment)
 
     def add_bss(self, size: int, alignment: int = 1) -> int:
-        """Add data to the BSS section.
-
-        Args:
-            size: The number of BSS bytes to add.
-            alignment: The added data's address will be a multiple of this.
-
-        Returns:
-            The address of the added data.
-        """
+        """Add zero-filled data to the BSS section and return its address."""
         return self.memory.add_region(RegionTag.BSS, size=size, alignment=alignment)
 
     def add_code(self, instructions: Iterable[Ins]) -> int:
-        """Add code to the Qvm.
-
-        Args:
-            instructions: The instructions to add.
-
-        Returns:
-            The address of the added code.
-        """
+        """Add code to the Qvm and return its address."""
         address = len(self.instructions)
         self.instructions.extend(instructions)
         return address
@@ -235,15 +204,15 @@ class Qvm:
     ) -> None:
         """Compile C code and add it to the Qvm.
 
-        Symbols defined in the code will be added to `symbols`.
+        Requires Quake 3's lcc compiler to be installed. The LCC environment variable
+        can be set to the path of the lcc executable if it is not detected.
 
-        Args:
-            code: The C code to compile.
-            include_dirs: A list of include paths.
+        Any symbols defined in the code will be added to self.symbols.
 
-        Raises:
-            CompilerError: There was an error during compilation.
-            FileNotFoundError: The lcc compiler could not be found.
+        Additional search paths for include files can be specified with include_dirs.
+
+        Compilation errors will cause a CompilerError exception to be raised with the
+        error message.
         """
         if self._lcc is None:
             raise FileNotFoundError(
@@ -397,14 +366,12 @@ class Qvm:
         self.instructions[original_init_call].operand = init_wrapper
 
     def replace_calls(self, old: Union[str, int], new: Union[str, int]) -> int:
-        """Replace calls to ``old`` with calls to ``new``.
+        """Replace calls to old with calls to new.
 
-        Args:
-            old: The name or address of the old function.
-            new: The name or address of the new function.
+        The old and new functions can be provided as addresses or names. If they are
+        names they will be looked up in self.symbols.
 
-        Returns:
-            The number of calls replaced.
+        Returns the number of calls replaced.
         """
         if isinstance(old, str):
             old = self.symbols[old]

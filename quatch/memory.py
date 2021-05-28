@@ -15,7 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Quatch; If not, see <https://www.gnu.org/licenses/>.
 
-"""This module provides a bytearray-like representation of a Qvm's memory."""
+"""A bytearray-like representation of a Qvm's memory."""
 
 from __future__ import annotations
 
@@ -27,11 +27,11 @@ from .util import align
 
 
 class Memory:
-    """A Qvm's initial memory contents.
+    """A Qvm's memory contents.
 
     This class behaves much like a bytearray, but every byte has an associated
-    `RegionTag` that determines how it will be initialized. Because of this, appending
-    data is done with `add_region` instead of the usual append or extend methods.
+    RegionTag that determines how it will be initialized. Because of this, appending
+    data is done with add_region instead of the usual append or extend methods.
     """
 
     def __init__(self) -> None:
@@ -165,25 +165,16 @@ class Memory:
         size: Optional[int] = None,
         alignment: int = 1
     ) -> int:
-        """Add a new region of memory.
+        """Add a new region of memory and return its address.
 
         Exactly one of data or size must be provided. Providing size will fill the
         region with zeros.
 
         DATA regions are meant hold to 4-byte words, so alignment and the size of data
-        must both be multiples of 4 if tag is `DATA`.
+        must both be multiples of 4 if tag is DATA.
 
         BSS regions are meant to hold zero-initialized data, so data must be all zeros
-        or size must be used if tag is `BSS`.
-
-        Args:
-            tag: The type of region to add.
-            data: The data to add.
-            size: The size of the region to add.
-            alignment: The added data's address will be a multiple of this.
-
-        Returns:
-            The address of the added data.
+        or size must be used if tag is BSS.
         """
         if data is None and size is None:
             raise TypeError("one of data or size must be provided")
@@ -218,37 +209,20 @@ class Memory:
         return address
 
     def align(self, alignment: int) -> None:
-        """Pad with with zeros to a multiple of the given alignment.
+        """Pad with with zeros to a multiple of alignment.
 
         Does nothing if len(self) is already a multiple of alignment.
-
-        Args:
-            alignment: The requested alignment.
         """
         self._size = align(self._size, alignment)
 
     def regions_with_tag(self, tag: RegionTag) -> Iterator[Region]:
-        """Find all regions with a given tag.
-
-        Args:
-            tag: The tag of the regions to find.
-
-        Returns:
-            An iterator over all the regions found.
-        """
+        """Find all regions with a given tag."""
         for region in self._regions:
             if region.tag == tag:
                 yield region
 
     def region_at(self, point: int) -> Optional[Region]:
-        """Find the `Region` overlapping a point.
-
-        Args:
-            point: The point the region must overlap.
-
-        Returns:
-            The region if it exists, otherwise None.
-        """
+        """Find the Region overlapping a point."""
         regions = self.regions_overlapping(point, point + 1)
         if len(regions) == 0:
             return None
@@ -256,15 +230,7 @@ class Memory:
         return regions[0]
 
     def regions_overlapping(self, begin: int, end: int) -> list[Region]:
-        """Find every `Region` that overlaps the interval [begin, end).
-
-        Args:
-            begin: The inclusive left bound of the interval.
-            end: The exclusive right bound of the interval.
-
-        Returns:
-            All regions that overlap [begin, end).
-        """
+        """Find every Region that overlaps the interval [begin, end)."""
         if end <= begin:
             return []
         query = Region(begin, end)
@@ -276,10 +242,12 @@ class Memory:
 class RegionTag(Enum):
     """The type of data stored in a region of memory.
 
-    * DATA bytes are initialized as 32-bit values and may be byte-swapped depending on
-      the endianness of the interpreter.
-    * LIT bytes are initialized as-is.
-    * BSS bytes are initialized to zero and cannot be assigned to.
+    DATA bytes are initialized as 32-bit values and may be byte-swapped depending on
+    the endianness of the interpreter.
+
+    LIT bytes are initialized as-is.
+
+    BSS bytes are initialized to zero and cannot be assigned to.
     """
 
     DATA = auto()

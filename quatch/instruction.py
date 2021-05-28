@@ -15,18 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Quatch; If not, see <https://www.gnu.org/licenses/>.
 
-r"""This module handles qvm instructions and their assembly and disassembly.
-
-Instructions are described by the following classes:
-
-    * `Instruction` is the instruction itself. It contains the opcode and operand.
-    * `Opcode` is the operation the instruction performs.
-
-They can be converted to and from their raw binary representation:
-
-    * `assemble` converts a list of `Instruction`\ s to bytes.
-    * `disassemble` converts bytes to a list of `Instruction`\ s.
-"""
+"""Qvm instructions and their assembly and disassembly."""
 
 from __future__ import annotations
 
@@ -122,17 +111,17 @@ operand_sizes.update({op: 0 for op in Opcode if op not in operand_sizes})
 
 
 class Instruction:
-    r"""A qvm instruction.
+    """A qvm instruction.
 
-    An Instruction consists of an `Opcode` and optionally an integer or floating point
+    An Instruction consists of an Opcode and optionally an integer or floating point
     operand, depending on the opcode.
 
-    The `BLOCK_COPY`, `ENTER`, `LEAVE`, `LOCAL`, and comparison (`EQ` through `GEF`)
-    opcodes require a 32-bit signed or unsigned integer operand.
+    The BLOCK_COPY, ENTER, LEAVE, LOCAL, and comparison (EQ through GEF) opcodes require
+    a 32-bit signed or unsigned integer operand.
 
-    The `CONST` opcode requires either a 32-bit integer or a 32-bit float.
+    The CONST opcode requires either a 32-bit integer or a 32-bit float.
 
-    The `ARG` opcode requires an 8-bit integer.
+    The ARG opcode requires an 8-bit integer.
 
     All other opcodes have no operand.
 
@@ -146,12 +135,7 @@ class Instruction:
     """
 
     def __init__(self, opcode: Opcode, operand: Optional[Operand] = None) -> None:
-        """Initialize an Instruction.
-
-        Args:
-            opcode: The opcode.
-            operand: The operand if it is required by the opcode.
-        """
+        """Initialize an Instruction from an opcode and operand."""
         self._opcode: Opcode = opcode
         self._operand: Optional[Operand] = None
 
@@ -178,17 +162,10 @@ class Instruction:
 
     @property
     def opcode(self) -> Opcode:
-        """The opcode.
-
-        This cannot be changed."""
         return self._opcode
 
     @property
     def operand(self) -> Operand:
-        """The operand.
-
-        This can only be set to a valid value for the opcode.
-        """
         if self._operand is None:
             raise AttributeError(f"{self._opcode.name} does not have an operand")
         return self._operand
@@ -238,7 +215,7 @@ class Instruction:
 
 
 def assemble(instructions: Iterable[Instruction]) -> bytes:
-    r"""Assemble `Instruction`\ s into bytes.
+    r"""Assemble Instructions into bytes.
 
     Example usage:
 
@@ -254,7 +231,7 @@ def assemble(instructions: Iterable[Instruction]) -> bytes:
 
 
 def disassemble(code: bytes) -> list[Instruction]:
-    r"""Disassemble bytes into `Instruction`\ s.
+    r"""Disassemble bytes into Instructions.
 
     Example usage:
 
