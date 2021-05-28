@@ -4,33 +4,25 @@ Quatch is a Python library for patching Quake 3 virtual machine programs.
 
 ## Installation
 
-Users:
-
 ```bash
-git clone https://github.com/birdstakes/quatch.git
-pip install ./quatch
+python -m pip install git+https://github.com/birdstakes/quatch.git
 ```
-
-Developers:
-
-```bash
-git clone https://github.com/birdstakes/quatch.git
-cd quatch
-pip install -e .
-pip install pre-commit
-pre-commit install
-```
-
-## Usage
 
 Quatch uses the lcc compiler to compile C code. It can be found in the Quake 3 SDK or
 built from the Quake 3 source code. You can either set the `LCC` environment variable
 to the path of the lcc executable, or you can make sure it is in your `PATH` or the
 current working directory.
 
+## Usage
+
+Quatch's main goal is to make it easy to add new C code to an existing qvm:
+
 ```python
 import quatch
 
+# A symbol for G_InitGame, CG_Init or UI_Init must be provided so quatch can
+# install a hook to initialize any added data.
+# These addresses are for DeFRaG 1.91.27.
 symbols = {
     'G_InitGame': 0x2b7,
     'Com_Printf': 0x446,
@@ -52,7 +44,3 @@ qvm.replace_calls('G_InitGame', 'G_InitGame_hook')
 
 qvm.write('patched_qagame.qvm')
 ```
-
-## License
-
-GPLv3+

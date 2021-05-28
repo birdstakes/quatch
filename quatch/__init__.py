@@ -18,10 +18,13 @@
 r"""A Quake 3 VM patching library.
 
 Quatch is a library for reading, modifying, and writing Quake 3 .qvm files.
-The simplest use is adding new C code to an existing qvm::
+Its main goal is to make it easy to add new C code to an existing qvm:
 
     import quatch
 
+    # A symbol for G_InitGame, CG_Init or UI_Init must be provided so quatch can
+    # install a hook to initialize any added data.
+    # These addresses are for DeFRaG 1.91.27.
     symbols = {
         'G_InitGame': 0x2b7,
         'Com_Printf': 0x446,
@@ -42,8 +45,8 @@ The simplest use is adding new C code to an existing qvm::
     qvm.replace_calls('G_InitGame', 'G_InitGame_hook')
     qvm.write('patched_qagame.qvm')
 
-Note that a symbol must always be provided for G_InitGame, CG_Init, or UI_Init so that
-Quatch can install a hook to initialize any added data.
+If more control is needed, code and data can be added and changed manually. See the Qvm
+and Instruction classes for more information.
 """
 
 from ._instruction import assemble, disassemble, Instruction, Opcode
