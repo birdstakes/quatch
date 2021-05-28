@@ -72,8 +72,8 @@ class Qvm:
                 code_offset,
                 code_length,
                 data_offset,
-                self._data_length,
-                self._lit_length,
+                self._orignal_data_length,
+                self._original_lit_length,
                 bss_length,
             ) = struct.unpack(HEADER_FORMAT, f.read(HEADER_SIZE))
 
@@ -91,8 +91,8 @@ class Qvm:
             bss_length -= STACK_SIZE
 
             f.seek(data_offset)
-            self.add_data(f.read(self._data_length))
-            self.add_lit(f.read(self._lit_length))
+            self.add_data(f.read(self._orignal_data_length))
+            self.add_lit(f.read(self._original_lit_length))
             self.add_bss(bss_length)
 
             f.seek(0)
@@ -128,10 +128,15 @@ class Qvm:
             f.write(code)
 
             data_offset = f.tell()
-            f.write(self.memory[: self._data_length + self._lit_length])
+            f.write(
+                self.memory[: self._orignal_data_length + self._original_lit_length]
+            )
 
             bss_length = (
-                len(self.memory) - self._data_length - self._lit_length + STACK_SIZE
+                len(self.memory)
+                - self._orignal_data_length
+                - self._original_lit_length
+                + STACK_SIZE
             )
 
             f.seek(0)
@@ -143,8 +148,8 @@ class Qvm:
                     code_offset,
                     len(code),
                     data_offset,
-                    self._data_length,
-                    self._lit_length,
+                    self._orignal_data_length,
+                    self._original_lit_length,
                     bss_length,
                 )
             )
@@ -304,7 +309,7 @@ class Qvm:
             begin, end = region.begin, region.end
 
             # skip .qvm's data section
-            if (begin, end) == (0, self._data_length):
+            if (begin, end) == (0, self._orignal_data_length):
                 continue
 
             for address in range(begin, end, 4):
@@ -324,8 +329,8 @@ class Qvm:
 
             # skip .qvm's lit section
             if (begin, end) == (
-                self._data_length,
-                self._data_length + self._lit_length,
+                self._orignal_data_length,
+                self._orignal_data_length + self._original_lit_length,
             ):
                 continue
 
