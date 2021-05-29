@@ -32,7 +32,7 @@ from collections.abc import Iterable, Mapping
 from typing import Optional, Union
 from ._instruction import assemble, disassemble, Instruction as Ins, Opcode as Op
 from ._memory import Memory, RegionTag
-from ._q3asm import Assembler
+from ._q3asm import Assembler, AssemblerError
 from ._util import crc32, forge_crc32, pad
 
 
@@ -276,6 +276,9 @@ class Qvm:
 
         except subprocess.CalledProcessError as e:
             raise CompilerError(e.output.decode()) from None
+
+        except AssemblerError as e:
+            raise CompilerError(str(e)) from None
 
         finally:
             c_file.close()
