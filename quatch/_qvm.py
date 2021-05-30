@@ -207,7 +207,35 @@ class Qvm:
     def add_c_code(
         self, code: str, include_dirs: Optional[Iterable[str]] = None
     ) -> None:
-        """Compile C code and add it to the Qvm.
+        """Compile a string of C code and add it to the Qvm.
+
+        Requires Quake 3's lcc compiler to be installed. The LCC environment variable
+        can be set to the path of the lcc executable if it is not detected.
+
+        Any symbols defined in the code will be added to self.symbols.
+
+        Additional search paths for include files can be specified with include_dirs.
+
+        Compilation errors will cause a CompilerError exception to be raised with the
+        error message.
+        """
+        c_file = tempfile.NamedTemporaryFile(suffix=".c", delete=False)
+        try:
+            c_file.write(code.encode())
+
+            # this must be closed on windows or lcc won't be able to open it
+            c_file.close()
+
+            self.add_c_file(c_file.name, include_dirs=include_dirs)
+        finally:
+            c_file.close()
+            with contextlib.suppress(FileNotFoundError):
+                os.remove(c_file.name)
+
+    def add_c_file(
+        self, path: str, include_dirs: Optional[Iterable[str]] = None
+    ) -> None:
+        """Compile a C file and add the code to the Qvm.
 
         Requires Quake 3's lcc compiler to be installed. The LCC environment variable
         can be set to the path of the lcc executable if it is not detected.
@@ -225,14 +253,10 @@ class Qvm:
                 "it is in your PATH."
             )
 
-        c_file = tempfile.NamedTemporaryFile(suffix=".c", delete=False)
         asm_file = tempfile.NamedTemporaryFile(suffix=".asm", delete=False)
 
         try:
-            c_file.write(code.encode())
-
-            # these must be closed on windows or lcc won't be able to open them
-            c_file.close()
+            # this must be closed on windows or lcc won't be able to open it
             asm_file.close()
 
             command = [
@@ -244,7 +268,7 @@ class Qvm:
             ]
             if include_dirs is not None:
                 command += [f"-I{include_dir}" for include_dir in include_dirs]
-            command += ["-o", asm_file.name, c_file.name]
+            command += ["-o", asm_file.name, path]
 
             # make sure lcc can find the other executables it needs
             env = os.environ.copy()
@@ -281,10 +305,8 @@ class Qvm:
             raise CompilerError(str(e)) from None
 
         finally:
-            c_file.close()
             asm_file.close()
             with contextlib.suppress(FileNotFoundError):
-                os.remove(c_file.name)
                 os.remove(asm_file.name)
 
     def _add_data_init_code(self) -> None:
