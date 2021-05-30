@@ -23,13 +23,11 @@ import collections
 import contextlib
 import mmap
 import os
-import shutil
 import struct
-import subprocess
-import sys
 import tempfile
 from collections.abc import Iterable, Mapping
 from typing import Optional, Union
+from ._compile import compile_c_file, CompilerError
 from ._instruction import assemble, disassemble, Instruction as Ins, Opcode as Op
 from ._memory import Memory, RegionTag
 from ._q3asm import Assembler, AssemblerError
@@ -45,12 +43,14 @@ class InitSymbolError(Exception):
     pass
 
 
-class CompilerError(Exception):
-    pass
-
-
 class Qvm:
     """A patchable Quake 3 VM program.
+
+    Compiling C code:
+        The add_c_code, add_c_file, and add_c_files methods compile C code and add the
+        resulting instructions, data, and defined symbols to the Qvm. This requires
+        Quake 3's lcc compiler to be installed. The LCC environment variable can be set
+        to the path of the lcc executable if it is not detected.
 
     Attributes:
         vm_magic: The magic number of the qvm file format version.
@@ -105,8 +105,6 @@ class Qvm:
             first, second = self.instructions[i : i + 2]
             if first.opcode == Op.CONST and second.opcode == Op.CALL:
                 self._calls[first.operand].append(i)
-
-        self._lcc = self._find_lcc()
 
     def write(self, path: str, forge_crc: bool = False) -> None:
         """Write a .qvm file.
@@ -188,33 +186,12 @@ class Qvm:
         self.instructions.extend(instructions)
         return address
 
-    def _find_lcc(self):
-        path = os.getcwd() + os.pathsep + os.environ.get("PATH", "")
-        lcc = (
-            os.environ.get("LCC")
-            or shutil.which("lcc", path=path)
-            or shutil.which("q3lcc", path=path)
-        )
-
-        if lcc is None and sys.platform in ("win32", "msys"):
-            for bin_dir in ("bin_nt", "bin"):
-                lcc = lcc or shutil.which(
-                    os.path.join("C:" + os.sep, "quake3", bin_dir, "lcc.exe")
-                )
-
-        return lcc
-
     def add_c_code(
         self, code: str, include_dirs: Optional[Iterable[str]] = None
     ) -> str:
         """Compile a string of C code and add it to the Qvm.
 
-        Requires Quake 3's lcc compiler to be installed. The LCC environment variable
-        can be set to the path of the lcc executable if it is not detected.
-
-        Any symbols defined in the code will be added to self.symbols.
-
-        Additional search paths for include files can be specified with include_dirs.
+        Additional search paths for include files can be specified in include_dirs.
 
         Compilation errors will cause a CompilerError exception to be raised with the
         error message.
@@ -239,56 +216,45 @@ class Qvm:
     ) -> str:
         """Compile a C file and add the code to the Qvm.
 
-        Requires Quake 3's lcc compiler to be installed. The LCC environment variable
-        can be set to the path of the lcc executable if it is not detected.
-
-        Any symbols defined in the code will be added to self.symbols.
-
-        Additional search paths for include files can be specified with include_dirs.
+        Additional search paths for include files can be specified in include_dirs.
 
         Compilation errors will cause a CompilerError exception to be raised with the
         error message.
 
         Returns the compiler's standard output/error.
         """
-        if self._lcc is None:
-            raise FileNotFoundError(
-                "Unable to locate lcc. Set the LCC environment variable or make sure "
-                "it is in your PATH."
-            )
+        return self.add_c_files([path], include_dirs=include_dirs)
 
-        asm_file = tempfile.NamedTemporaryFile(suffix=".asm", delete=False)
+    def add_c_files(
+        self, paths: Iterable[str], include_dirs: Optional[Iterable[str]] = None
+    ) -> str:
+        """Compile C files and add the code to the Qvm.
+
+        Additional search paths for include files can be specified in include_dirs.
+
+        Compilation errors will cause a CompilerError exception to be raised with the
+        error message.
+
+        Returns the compiler's standard output/error.
+        """
+        asm_files = []
+        output = ""
 
         try:
-            # this must be closed on windows or lcc won't be able to open it
-            asm_file.close()
+            for path in paths:
+                asm_file = tempfile.NamedTemporaryFile(suffix=".asm", delete=False)
+                asm_files.append(asm_file)
 
-            command = [
-                self._lcc,
-                "-DQ3_VM",
-                "-S",
-                "-Wf-target=bytecode",
-                "-Wf-g",
-            ]
-            if include_dirs is not None:
-                command += [f"-I{include_dir}" for include_dir in include_dirs]
-            command += ["-o", asm_file.name, path]
+                # this must be closed on windows or lcc won't be able to open it
+                asm_file.close()
 
-            # make sure lcc can find the other executables it needs
-            env = os.environ.copy()
-            env["PATH"] = (
-                os.path.realpath(os.path.dirname(self._lcc))
-                + os.pathsep
-                + env.get("PATH", "")
-            )
-
-            output = subprocess.check_output(command, env=env, stderr=subprocess.STDOUT)
+                output += compile_c_file(path, asm_file.name, include_dirs=include_dirs)
 
             self.memory.align(4)
 
             assembler = Assembler()
             instructions, segments, symbols = assembler.assemble(
-                [asm_file.name],
+                [asm_file.name for asm_file in asm_files],
                 code_base=len(self.instructions),
                 data_base=len(self.memory),
                 symbols=self.symbols,
@@ -301,18 +267,16 @@ class Qvm:
             self.add_bss(len(segments["bss"].image))
 
             self.symbols.update(symbols)
-            return output.decode()
-
-        except subprocess.CalledProcessError as e:
-            raise CompilerError(e.output.decode()) from None
+            return output
 
         except AssemblerError as e:
             raise CompilerError(str(e)) from None
 
         finally:
-            asm_file.close()
-            with contextlib.suppress(FileNotFoundError):
-                os.remove(asm_file.name)
+            for asm_file in asm_files:
+                asm_file.close()
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(asm_file.name)
 
     def _add_data_init_code(self) -> None:
         for init_name in ("G_InitGame", "CG_Init", "UI_Init"):

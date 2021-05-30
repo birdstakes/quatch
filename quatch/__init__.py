@@ -48,9 +48,9 @@ Its main goal is to make it easy to add new C code to an existing qvm:
 If more control is needed, code and data can be added and changed manually. See the Qvm
 and Instruction classes for more information.
 """
-
+from ._compile import CompilerError
 from ._instruction import assemble, disassemble, Instruction, Opcode
-from ._qvm import CompilerError, InitSymbolError, Qvm
+from ._qvm import InitSymbolError, Qvm
 
 __all__ = [
     "assemble",
