@@ -206,7 +206,7 @@ class Qvm:
 
     def add_c_code(
         self, code: str, include_dirs: Optional[Iterable[str]] = None
-    ) -> None:
+    ) -> str:
         """Compile a string of C code and add it to the Qvm.
 
         Requires Quake 3's lcc compiler to be installed. The LCC environment variable
@@ -218,6 +218,8 @@ class Qvm:
 
         Compilation errors will cause a CompilerError exception to be raised with the
         error message.
+
+        Returns the compiler's standard output/error.
         """
         c_file = tempfile.NamedTemporaryFile(suffix=".c", delete=False)
         try:
@@ -226,7 +228,7 @@ class Qvm:
             # this must be closed on windows or lcc won't be able to open it
             c_file.close()
 
-            self.add_c_file(c_file.name, include_dirs=include_dirs)
+            return self.add_c_file(c_file.name, include_dirs=include_dirs)
         finally:
             c_file.close()
             with contextlib.suppress(FileNotFoundError):
@@ -234,7 +236,7 @@ class Qvm:
 
     def add_c_file(
         self, path: str, include_dirs: Optional[Iterable[str]] = None
-    ) -> None:
+    ) -> str:
         """Compile a C file and add the code to the Qvm.
 
         Requires Quake 3's lcc compiler to be installed. The LCC environment variable
@@ -246,6 +248,8 @@ class Qvm:
 
         Compilation errors will cause a CompilerError exception to be raised with the
         error message.
+
+        Returns the compiler's standard output/error.
         """
         if self._lcc is None:
             raise FileNotFoundError(
@@ -278,7 +282,7 @@ class Qvm:
                 + env.get("PATH", "")
             )
 
-            subprocess.check_output(command, env=env, stderr=subprocess.STDOUT)
+            output = subprocess.check_output(command, env=env, stderr=subprocess.STDOUT)
 
             self.memory.align(4)
 
@@ -297,6 +301,7 @@ class Qvm:
             self.add_bss(len(segments["bss"].image))
 
             self.symbols.update(symbols)
+            return output.decode()
 
         except subprocess.CalledProcessError as e:
             raise CompilerError(e.output.decode()) from None
