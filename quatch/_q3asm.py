@@ -143,6 +143,9 @@ class Assembler:
 
         self.symbols = {}
 
+        self.file = "unknown"
+        self.line = 0
+
         # provided symbols should be relative to 0, no matter what code_base
         # and data_base are
         fake_segment = Segment()
@@ -192,7 +195,7 @@ class Assembler:
             opcode = opcode_map[tokens[0]]
 
             if opcode == Op.UNDEF:
-                raise AssemblerError(f"Undefined opcode: {opcode}")
+                self._error(f"undefined opcode {opcode}")
 
             if opcode == Op.IGNORE:
                 return []
@@ -204,7 +207,7 @@ class Assembler:
                 elif tokens[1][0] == "2":
                     opcode = Op.SEX16
                 else:
-                    raise AssemblerError(f"Bad sign extension: {tokens[1]}")
+                    self._error(f"bad sign extension {tokens[1]}")
                 # get rid of the parm now that we have the right opcode
                 tokens = tokens[:1]
 
@@ -286,6 +289,12 @@ class Assembler:
             else:
                 self._define_symbol(tokens[1], len(self.current_segment.image))
 
+        elif tokens[0] == "file":
+            self.file = tokens[1][1:-1]
+
+        elif tokens[0] == "line":
+            self.line = int(tokens[1])
+
         elif tokens[0] in ("import", "export", "line", "file"):
             pass
 
@@ -293,7 +302,7 @@ class Assembler:
             pass
 
         else:
-            raise AssemblerError(f"Syntax error: {line}")
+            self._error("syntax error")
 
         return []
 
@@ -327,7 +336,7 @@ class Assembler:
             return
 
         if name in self.symbols:
-            raise AssemblerError(f"Multiple definitions for {name}")
+            self._error(f"multiple definitions for {name}")
 
         if name.startswith("$"):
             name += f"_{self.current_file_index}"
@@ -343,7 +352,7 @@ class Assembler:
             name += f"_{self.current_file_index}"
 
         if name not in self.symbols:
-            raise AssemblerError(f"Symbol {name} undefined")
+            self._error(f"symbol {name} undefined")
 
         s = self.symbols[name]
         return s.segment.segment_base + s.value
@@ -354,3 +363,6 @@ class Assembler:
             if self.pass_number == 0:
                 self.last_symbol.segment = self.current_segment
                 self.last_symbol.value = len(self.current_segment.image)
+
+    def _error(self, message):
+        raise AssemblerError(f"{self.file}:{self.line}: error; {message}")
