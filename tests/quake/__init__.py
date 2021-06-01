@@ -17,7 +17,7 @@ def load_tests(loader, standard_tests, pattern):
     os.chdir(this_dir)
 
     try:
-        os.chdir("openarena-0.8.8")
+        os.chdir("deps/openarena-0.8.8")
     except FileNotFoundError:
         raise unittest.SkipTest("Run `python -m tests.quake setup` first.") from None
 
@@ -102,17 +102,21 @@ def setup(args):
     logging.basicConfig(level=logging.INFO)
 
     os.chdir(pathlib.Path(__file__).parent.resolve())
+    pathlib.Path("deps").mkdir(exist_ok=True)
+    os.chdir("deps")
 
     download(
         "http://download.tuxfamily.org/openarena/rel/088/openarena-0.8.8.zip",
         "openarena-0.8.8.zip",
     )
     unzip("openarena-0.8.8.zip")
+    os.remove("openarena-0.8.8.zip")
 
     download(
         "https://q3defrag.org/files/defrag/defrag_1.91.27.zip", "defrag_1.91.27.zip"
     )
     unzip("defrag_1.91.27.zip", "openarena-0.8.8")
+    os.remove("defrag_1.91.27.zip")
 
     os.chdir("openarena-0.8.8")
     mode = (
