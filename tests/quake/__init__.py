@@ -26,23 +26,50 @@ def load_tests(loader, standard_tests, pattern):
     return standard_tests
 
 
-def run_quake(args=None):
-    if args is None:
-        args = "+set fs_game defrag +map defrag_gallery +quit"
-
-    if sys.platform == "msys":
-        quake = "winpty -Xallow-non-tty -Xplain ./oa_ded.exe"
+def run_quake():
+    if sys.platform == "win32":
+        quake = "oa_ded.exe"
+        stdout = None
+        startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags = subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        creationflags = subprocess.CREATE_NEW_CONSOLE
     elif sys.platform == "linux" and platform.machine() in ("i386", "x86_64"):
         quake = f"./oa_ded.{platform.machine()}"
+        stdout = subprocess.PIPE
+        startupinfo = None
+        creationflags = 0
     else:
         raise unittest.SkipTest("unsupported platform")
 
-    return subprocess.run(
-        f"{quake} {args}",
-        shell=True,
-        stdout=subprocess.PIPE,
+    # truncate log file, creating it if it doesn't exist
+    with open("defrag/qconsole.log", "wb"):
+        pass
+
+    subprocess.run(
+        [
+            quake,
+            "+set",
+            "fs_homepath",
+            os.path.abspath("."),
+            "+set",
+            "logfile",
+            "2",
+            "+set",
+            "fs_game",
+            "defrag",
+            "+map",
+            "defrag_gallery",
+            "+quit",
+        ],
+        stdout=stdout,
         stderr=subprocess.STDOUT,
+        creationflags=creationflags,
+        startupinfo=startupinfo,
     )
+
+    with open("defrag/qconsole.log", "rb") as f:
+        return f.read()
 
 
 def download(url, path, force=False):

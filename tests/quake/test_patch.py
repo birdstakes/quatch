@@ -10,10 +10,6 @@ class TestPatch(unittest.TestCase):
             "Com_Printf": 0x446,
         }
 
-        # TODO
-        # maybe we can reuse the same oa_ded instance for all tests by sending a
-        # map or map_restart command after updating the qvm
-
         qvm = Qvm("defrag/vm/original_qagame.qvm", symbols=symbols)
         qvm.add_c_code(
             r"""
@@ -24,10 +20,10 @@ class TestPatch(unittest.TestCase):
                 Com_Printf("\nQUATCH: Hooked\n");
                 G_InitGame(levelTime, randomSeed, restart);
             }
-        """
+            """
         )
         qvm.replace_calls("G_InitGame", "G_InitGame_hook")
         qvm.write("defrag/vm/qagame.qvm")
 
-        stdout = run_quake().stdout.decode()
-        self.assertTrue("QUATCH: Hooked" in stdout.splitlines())
+        output = run_quake().decode()
+        self.assertTrue("QUATCH: Hooked" in output.splitlines())
