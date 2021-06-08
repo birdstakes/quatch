@@ -20,8 +20,6 @@ setup(int argc, char **argv)
 	char *fp, *dp;
 	Tokenrow tr;
 	extern void setup_kwtab(void);
-	uchar *includeDirs[ NINCLUDE ] = { 0 };
-	int   numIncludeDirs = 0;
 
 	setup_kwtab();
 	while ((c = lcc_getopt(argc, argv, "MNOVv+I:D:U:F:lg")) != -1)
@@ -32,7 +30,15 @@ setup(int argc, char **argv)
 					includelist[i].deleted = 1;
 			break;
 		case 'I':
-			includeDirs[ numIncludeDirs++ ] = newstring( (uchar *)optarg, strlen( optarg ), 0 );
+			for (i=NINCLUDE-2; i>=0; i--) {
+				if (includelist[i].file==NULL) {
+					includelist[i].always = 1;
+					includelist[i].file = optarg;
+					break;
+				}
+			}
+			if (i<0)
+				error(FATAL, "Too many -I directives");
 			break;
 		case 'D':
 		case 'U':
@@ -81,9 +87,6 @@ setup(int argc, char **argv)
 		setobjname(fp);
 	includelist[NINCLUDE-1].always = 0;
 	includelist[NINCLUDE-1].file = dp;
-
-	for( i = 0; i < numIncludeDirs; i++ )
-		appendDirToIncludeList( (char *)includeDirs[ i ] );
 
 	setsource(fp, fd, NULL);
 }
