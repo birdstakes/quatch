@@ -22,7 +22,6 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-import sys
 from typing import Iterable, Optional
 
 
@@ -34,9 +33,6 @@ def compile_c_file(
     input_path: str, output_path: str, include_dirs: Optional[Iterable[str]] = None
 ) -> str:
     """Compile C code into lcc bytecode.
-
-    Requires Quake 3's lcc compiler to be installed. The LCC environment variable can be
-    set to the path of the lcc executable if it is not detected.
 
     Additional search paths for include files can be specified in include_dirs.
 
@@ -77,20 +73,21 @@ def compile_c_file(
 
 
 def _find_lcc():
-    path = os.getcwd() + os.pathsep + os.environ.get("PATH", "")
-    lcc = (
+    bundled_lcc_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "bin")
+
+    path = os.pathsep.join(
+        [
+            os.getcwd(),
+            bundled_lcc_dir,
+            os.environ.get("PATH", ""),
+        ]
+    )
+
+    return (
         os.environ.get("LCC")
         or shutil.which("lcc", path=path)
         or shutil.which("q3lcc", path=path)
     )
-
-    if lcc is None and sys.platform in ("win32", "msys"):
-        for bin_dir in ("bin_nt", "bin"):
-            lcc = lcc or shutil.which(
-                os.path.join("C:" + os.sep, "quake3", bin_dir, "lcc.exe")
-            )
-
-    return lcc
 
 
 _lcc = _find_lcc()
