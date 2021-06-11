@@ -48,9 +48,10 @@ class Qvm:
 
     Compiling C code:
         The add_c_code, add_c_file, and add_c_files methods compile C code and add the
-        resulting instructions, data, and defined symbols to the Qvm. This requires
-        Quake 3's lcc compiler to be installed. The LCC environment variable can be set
-        to the path of the lcc executable if it is not detected.
+        resulting instructions, data, and defined symbols to the Qvm. By default these
+        use the version of Quake 3's lcc compiler that is included with Quatch, but the
+        LCC environment variable can be set to the path of a different lcc executable if
+        a specific version is needed.
 
     Attributes:
         vm_magic: The magic number of the qvm file format version.
