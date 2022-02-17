@@ -26,7 +26,7 @@ import os
 import struct
 import tempfile
 from collections.abc import Iterable, Mapping
-from typing import Optional, Union
+from typing import Any, Optional, Union
 from ._compile import compile_c_file, CompilerError
 from ._instruction import assemble, disassemble, Instruction as Ins, Opcode as Op
 from ._memory import Memory, RegionTag
@@ -188,7 +188,10 @@ class Qvm:
         return address
 
     def add_c_code(
-        self, code: str, include_dirs: Optional[Iterable[str]] = None
+        self,
+        code: str,
+        include_dirs: Optional[Iterable[str]] = None,
+        **kwargs: Optional[Any],
     ) -> str:
         """Compile a string of C code and add it to the Qvm.
 
@@ -206,14 +209,17 @@ class Qvm:
             # this must be closed on windows or lcc won't be able to open it
             c_file.close()
 
-            return self.add_c_file(c_file.name, include_dirs=include_dirs)
+            return self.add_c_file(c_file.name, include_dirs=include_dirs, **kwargs)
         finally:
             c_file.close()
             with contextlib.suppress(FileNotFoundError):
                 os.remove(c_file.name)
 
     def add_c_file(
-        self, path: str, include_dirs: Optional[Iterable[str]] = None
+        self,
+        path: str,
+        include_dirs: Optional[Iterable[str]] = None,
+        **kwargs: Optional[Any],
     ) -> str:
         """Compile a C file and add the code to the Qvm.
 
@@ -224,10 +230,13 @@ class Qvm:
 
         Returns the compiler's standard output/error.
         """
-        return self.add_c_files([path], include_dirs=include_dirs)
+        return self.add_c_files([path], include_dirs=include_dirs, **kwargs)
 
     def add_c_files(
-        self, paths: Iterable[str], include_dirs: Optional[Iterable[str]] = None
+        self,
+        paths: Iterable[str],
+        include_dirs: Optional[Iterable[str]] = None,
+        **kwargs: Optional[Any],
     ) -> str:
         """Compile C files and add the code to the Qvm.
 
@@ -256,16 +265,39 @@ class Qvm:
             assembler = Assembler()
             instructions, segments, symbols = assembler.assemble(
                 [asm_file.name for asm_file in asm_files],
-                code_base=len(self.instructions),
-                data_base=len(self.memory),
+                code_base=kwargs.get("code_base", len(self.instructions)),
+                data_base=kwargs.get("data_base", len(self.memory)),
+                lit_base=kwargs.get("lit_base"),
+                bss_base=kwargs.get("bss_base"),
+                pad_segments=kwargs.get("pad_segments"),
                 symbols=self.symbols,
             )
 
-            self.instructions.extend(instructions)
+            new_segment_bases = kwargs.get("new_segment_bases")
+            if new_segment_bases:
+                for section in ("code", "data", "lit", "bss"):
+                    segment = segments[section]
+                    new_segment_bases[f"{section}_base"] = segment.segment_base + len(
+                        segment.image
+                    )
 
-            self.add_data(segments["data"].image)
-            self.add_lit(segments["lit"].image)
-            self.add_bss(len(segments["bss"].image))
+            code_base = kwargs.get("code_base")
+            if code_base is not None:
+                self.instructions[
+                    code_base : code_base + len(instructions)
+                ] = instructions
+            else:
+                self.instructions.extend(instructions)
+
+            for segment in ("data", "lit", "bss"):
+                base = kwargs.get(f"{segment}_base")
+                data = segments[segment].image
+                if base is not None:
+                    self.mem[base : base + len(data)] = data
+                else:
+                    getattr(self, f"add_{segment}")(
+                        len(data) if segment == "bss" else data
+                    )
 
             self.symbols.update(symbols)
             return output
@@ -280,6 +312,12 @@ class Qvm:
                     os.remove(asm_file.name)
 
     def _add_data_init_code(self) -> None:
+        if (
+            len(list(self.memory.regions_with_tag(RegionTag.DATA))) == 1
+            and len(list(self.memory.regions_with_tag(RegionTag.LIT))) == 1
+        ):
+            return
+
         for init_name in ("G_InitGame", "CG_Init", "UI_Init"):
             original_init = self.symbols.get(init_name)
             if original_init is not None:

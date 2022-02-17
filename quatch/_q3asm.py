@@ -135,7 +135,16 @@ class AssemblerError(Exception):
 
 
 class Assembler:
-    def assemble(self, input_files, code_base=0, data_base=0, symbols={}):
+    def assemble(
+        self,
+        input_files,
+        code_base=0,
+        data_base=0,
+        lit_base=None,
+        bss_base=None,
+        pad_segments=True,
+        symbols={},
+    ):
         self.segments = {name: Segment() for name in ("code", "data", "lit", "bss")}
         data = self.segments["data"]
         lit = self.segments["lit"]
@@ -158,8 +167,12 @@ class Assembler:
         for pass_number in range(2):
             self.pass_number = pass_number
             data.segment_base = data_base
-            lit.segment_base = data_base + len(data.image)
-            bss.segment_base = lit.segment_base + len(lit.image)
+            lit.segment_base = (
+                lit_base if lit_base is not None else data_base + len(data.image)
+            )
+            bss.segment_base = (
+                bss_base if bss_base is not None else lit.segment_base + len(lit.image)
+            )
             for seg in self.segments:
                 self.segments[seg].image = bytearray()
 
@@ -175,8 +188,9 @@ class Assembler:
                             )
                         )
 
-            for seg in self.segments:
-                self.segments[seg].image = pad(self.segments[seg].image, 4)
+            if pad_segments:
+                for seg in self.segments:
+                    self.segments[seg].image = pad(self.segments[seg].image, 4)
 
         # convert symbol values to their actual addresses
         symbols = {
