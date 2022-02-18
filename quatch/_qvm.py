@@ -26,17 +26,22 @@ import os
 import struct
 import tempfile
 from collections.abc import Iterable, Mapping
-from typing import Any, Optional, Union
+from typing import Any, NamedTuple, Optional, Union
 from ._compile import compile_c_file, CompilerError
 from ._instruction import assemble, disassemble, Instruction as Ins, Opcode as Op
 from ._memory import Memory, RegionTag
-from ._q3asm import Assembler, AssemblerError
+from ._q3asm import Assembler, AssemblerError, Segment
 from ._util import crc32, forge_crc32, pad
 
 
 STACK_SIZE = 0x10000
 HEADER_FORMAT = "<IIIIIIII"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+
+
+class CompilationResult(NamedTuple):
+    output: str
+    segments: dict[str, Segment]
 
 
 class InitSymbolError(Exception):
@@ -190,17 +195,11 @@ class Qvm:
     def add_c_code(
         self,
         code: str,
-        include_dirs: Optional[Iterable[str]] = None,
         **kwargs: Optional[Any],
-    ) -> str:
+    ) -> CompilationResult:
         """Compile a string of C code and add it to the Qvm.
 
-        Additional search paths for include files can be specified in include_dirs.
-
-        Compilation errors will cause a CompilerError exception to be raised with the
-        error message.
-
-        Returns the compiler's standard output/error.
+        See add_c_files for other arguments.
         """
         c_file = tempfile.NamedTemporaryFile(suffix=".c", delete=False)
         try:
@@ -209,7 +208,7 @@ class Qvm:
             # this must be closed on windows or lcc won't be able to open it
             c_file.close()
 
-            return self.add_c_file(c_file.name, include_dirs=include_dirs, **kwargs)
+            return self.add_c_file(c_file.name, **kwargs)
         finally:
             c_file.close()
             with contextlib.suppress(FileNotFoundError):
@@ -218,26 +217,24 @@ class Qvm:
     def add_c_file(
         self,
         path: str,
-        include_dirs: Optional[Iterable[str]] = None,
         **kwargs: Optional[Any],
-    ) -> str:
+    ) -> CompilationResult:
         """Compile a C file and add the code to the Qvm.
 
-        Additional search paths for include files can be specified in include_dirs.
-
-        Compilation errors will cause a CompilerError exception to be raised with the
-        error message.
-
-        Returns the compiler's standard output/error.
+        See add_c_files for other arguments.
         """
-        return self.add_c_files([path], include_dirs=include_dirs, **kwargs)
+        return self.add_c_files([path], **kwargs)
 
     def add_c_files(
         self,
         paths: Iterable[str],
         include_dirs: Optional[Iterable[str]] = None,
-        **kwargs: Optional[Any],
-    ) -> str:
+        code_base: Optional[int] = None,
+        data_base: Optional[int] = None,
+        bss_base: Optional[int] = None,
+        lit_base: Optional[int] = None,
+        pad_segments: Optional[bool] = True,
+    ) -> CompilationResult:
         """Compile C files and add the code to the Qvm.
 
         Additional search paths for include files can be specified in include_dirs.
@@ -245,7 +242,8 @@ class Qvm:
         Compilation errors will cause a CompilerError exception to be raised with the
         error message.
 
-        Returns the compiler's standard output/error.
+        Returns a CompilationResult with the compiler's standard output/error and
+        segments containing the compiled code and data.
         """
         asm_files = []
         output = ""
@@ -265,23 +263,16 @@ class Qvm:
             assembler = Assembler()
             instructions, segments, symbols = assembler.assemble(
                 [asm_file.name for asm_file in asm_files],
-                code_base=kwargs.get("code_base", len(self.instructions)),
-                data_base=kwargs.get("data_base", len(self.memory)),
-                lit_base=kwargs.get("lit_base"),
-                bss_base=kwargs.get("bss_base"),
-                pad_segments=kwargs.get("pad_segments"),
+                code_base=code_base
+                if code_base is not None
+                else len(self.instructions),
+                data_base=data_base if data_base is not None else len(self.memory),
+                lit_base=lit_base,
+                bss_base=bss_base,
+                pad_segments=pad_segments,
                 symbols=self.symbols,
             )
 
-            new_segment_bases = kwargs.get("new_segment_bases")
-            if new_segment_bases:
-                for section in ("code", "data", "lit", "bss"):
-                    segment = segments[section]
-                    new_segment_bases[f"{section}_base"] = segment.segment_base + len(
-                        segment.image
-                    )
-
-            code_base = kwargs.get("code_base")
             if code_base is not None:
                 self.instructions[
                     code_base : code_base + len(instructions)
@@ -289,18 +280,26 @@ class Qvm:
             else:
                 self.instructions.extend(instructions)
 
-            for segment in ("data", "lit", "bss"):
-                base = kwargs.get(f"{segment}_base")
-                data = segments[segment].image
-                if base is not None:
-                    self.mem[base : base + len(data)] = data
-                else:
-                    getattr(self, f"add_{segment}")(
-                        len(data) if segment == "bss" else data
-                    )
+            data = segments["data"].image
+            if data_base is not None:
+                self.memory[data_base : data_base + len(data)] = data
+            else:
+                self.add_data(data)
+
+            lit = segments["lit"].image
+            if lit_base is not None:
+                self.memory[lit_base : lit_base + len(lit)] = lit
+            else:
+                self.add_lit(lit)
+
+            bss = segments["bss"].image
+            if bss_base is not None:
+                self.memory[bss_base : bss_base + len(bss)] = bss
+            else:
+                self.add_bss(len(bss))
 
             self.symbols.update(symbols)
-            return output
+            return CompilationResult(output, segments)
 
         except AssemblerError as e:
             raise CompilerError(str(e)) from None
