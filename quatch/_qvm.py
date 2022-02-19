@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import collections
 import contextlib
+from dis import Instruction
 import mmap
 import os
 import struct
@@ -41,6 +42,7 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
 class CompilationResult(NamedTuple):
     output: str
+    instructions: list[Instruction]
     segments: dict[str, Segment]
 
 
@@ -299,7 +301,7 @@ class Qvm:
                 self.add_bss(len(bss))
 
             self.symbols.update(symbols)
-            return CompilationResult(output, segments)
+            return CompilationResult(output, instructions, segments)
 
         except AssemblerError as e:
             raise CompilerError(str(e)) from None
