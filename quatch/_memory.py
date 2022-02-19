@@ -52,7 +52,7 @@ class Memory:
         if isinstance(key, int):
             key = self._check_index(key)
             region = self.region_at(key)
-            if region is None or region.contents is None:
+            if region.contents is None:
                 return 0
             else:
                 return region.contents[key - region.begin]
@@ -60,20 +60,13 @@ class Memory:
         elif isinstance(key, slice):
             key = self._check_slice(key)
             result = bytearray()
-            position = key.start
             for region in self.regions_overlapping(key.start, key.stop):
-                # gaps caused by align() should be filled with zeros
-                result.extend(b"\x00" * (region.begin - position))
-                position = region.end
-
                 begin = max(0, key.start - region.begin)
                 end = region.size - max(0, (region.end - key.stop))
                 if region.contents is None:
                     result.extend(b"\x00" * (end - begin))
                 else:
                     result.extend(region.contents[begin:end])
-
-            result.extend(b"\x00" * (key.stop - position))
             return result
 
         else:
@@ -96,8 +89,9 @@ class Memory:
         if isinstance(key, int):
             key = self._check_index(key)
             region = self.region_at(key)
-            if region is None or region.contents is None:
-                raise IndexError("cannot assign to BSS")
+            if region.contents is None:
+                if value != 0:
+                    raise ValueError("cannot assign nonzero data to BSS")
             else:
                 region.contents[key - region.begin] = value
 
