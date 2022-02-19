@@ -160,6 +160,14 @@ class Instruction:
         else:
             return f"{self._opcode.name} {self._operand:#x}"
 
+    def __eq__(self, other: Instruction) -> bool:
+        def normalize(x):
+            return (x & 0xFFFFFFFF) if type(x) == int and x < 0 else x
+
+        return self.opcode == other.opcode and normalize(self._operand) == normalize(
+            other._operand
+        )
+
     @property
     def opcode(self) -> Opcode:
         return self._opcode
