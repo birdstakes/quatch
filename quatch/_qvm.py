@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import collections
 import contextlib
-from dis import Instruction
 import mmap
 import os
 import struct
@@ -42,7 +41,6 @@ HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
 
 class CompilationResult(NamedTuple):
     output: str
-    instructions: list[Instruction]
     segments: dict[str, Segment]
 
 
@@ -226,6 +224,68 @@ class Qvm:
         See add_c_files for other arguments.
         """
         return self.add_c_files([path], **kwargs)
+
+    def my_add_c_files(
+        self,
+        paths: Iterable[str],
+        include_dirs: Optional[Iterable[str]] = None,
+    ) -> CompilationResult:
+        """Compile C files and add the code to the Qvm.
+
+        Additional search paths for include files can be specified in include_dirs.
+
+        Compilation errors will cause a CompilerError exception to be raised with the
+        error message.
+
+        Returns a CompilationResult with the compiler's standard output/error and
+        segments containing the compiled code and data.
+        """
+        asm_files = []
+        output = []
+
+        try:
+            for (path, *rest) in paths:
+                asm_file = tempfile.NamedTemporaryFile(suffix=".asm", delete=False)
+                asm_files.append((asm_file, *rest))
+
+                # this must be closed on windows or lcc won't be able to open it
+                asm_file.close()
+
+                output.append(
+                    compile_c_file(path, asm_file.name, include_dirs=include_dirs)
+                )
+
+            self.memory.align(4)
+
+            assembler = Assembler()
+            file_segments, symbols = assembler.my_assemble(
+                [(asm_file.name, *rest) for (asm_file, *rest) in asm_files],
+                symbols=self.symbols,
+            )
+
+            for segments in file_segments:
+                code_base = segments["code"].segment_base
+                code_data = segments["code"].image
+                self.instructions[code_base : code_base + len(code_data)] = code_data
+
+                for region in ("data", "lit", "bss"):
+                    segment = segments[region]
+                    segment_base, segment_data = segment.segment_base, segment.image
+                    self.memory[
+                        segment_base : segment_base + len(segment_data)
+                    ] = segment_data
+
+            self.symbols.update(symbols)
+            return [CompilationResult(i, x) for i, x in zip(output, file_segments)]
+
+        except AssemblerError as e:
+            raise CompilerError(str(e)) from None
+
+        finally:
+            for (asm_file, *rest) in asm_files:
+                asm_file.close()
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(asm_file.name)
 
     def add_c_files(
         self,

@@ -135,6 +135,62 @@ class AssemblerError(Exception):
 
 
 class Assembler:
+    def my_assemble(
+        self,
+        input_files,
+        symbols={},
+    ):
+        self.symbols = {}
+
+        self.file = "unknown"
+        self.line = 0
+
+        # provided symbols should be relative to 0, no matter what code_base
+        # and data_base are
+        fake_segment = Segment()
+        for sym, value in symbols.items():
+            self.symbols[sym] = Symbol(fake_segment, value)
+
+        self.current_args = 0
+        self.current_locals = 0
+        self.current_arg_offset = 0
+        rets = []
+        for pass_number in range(2):
+            self.pass_number = pass_number
+            self.segments = {name: Segment() for name in ("code", "data", "lit", "bss")}
+            for current_file_index, (filename, *base_map) in enumerate(input_files):
+                base_map = base_map[0] if base_map else {}
+
+                # clear segments, otherwise we keep appending the same dict
+                # TODO solve this in a better way or something
+                old_segs = self.segments
+                self.segments = {}
+
+                for section in ("code", "data", "lit", "bss"):
+                    if f"{section}_base" in base_map:
+                        self.segments[section] = Segment(
+                            segment_base=base_map[f"{section}_base"]
+                        )
+                    else:
+                        seg = old_segs[section]
+                        self.segments[section] = Segment(
+                            segment_base=seg.segment_base + len(seg.image)
+                        )
+                self.segments["code"].image = []  # TODO idk
+                self.current_file_index = current_file_index
+                with open(filename) as f:
+                    for line in f:
+                        self.segments["code"].image.extend(self._assemble_line(line))
+                if pass_number == 1:
+                    rets.append(self.segments)
+
+        # convert symbol values to their actual addresses
+        symbols = {
+            name: symbol.value + symbol.segment.segment_base
+            for name, symbol in self.symbols.items()
+        }
+        return rets, symbols
+
     def assemble(
         self,
         input_files,
@@ -200,7 +256,8 @@ class Assembler:
 
         return instructions, self.segments, symbols
 
-    def _assemble_line(self, line, address):
+    def _assemble_line(self, line):
+        address = len(self.segments["code"].image)  # TODO idk
         tokens = line.split()
         if len(tokens) == 0:
             return []
@@ -282,7 +339,9 @@ class Assembler:
 
         elif tokens[0] == "align":
             alignment = int(tokens[1])
-            self.current_segment.image = pad(self.current_segment.image, alignment)
+            x = self.current_segment.segment_base + len(self.current_segment.image)
+            x = align(x, alignment) - x
+            self.current_segment.image.extend([0] * x)
 
         elif tokens[0] == "skip":
             size = int(tokens[1])
