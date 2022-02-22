@@ -134,10 +134,16 @@ class Instruction:
         Instruction(Opcode.CONST, 0x7b)
     """
 
-    def __init__(self, opcode: Opcode, operand: Optional[Operand] = None) -> None:
+    def __init__(
+        self,
+        opcode: Opcode,
+        operand: Optional[Operand] = None,
+        debug_info: Optional[str] = "",
+    ) -> None:
         """Initialize an Instruction from an opcode and operand."""
         self._opcode: Opcode = opcode
         self._operand: Optional[Operand] = None
+        self.debug_info = debug_info
 
         if operand is not None:
             self.operand = operand

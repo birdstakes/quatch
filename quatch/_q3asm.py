@@ -178,6 +178,7 @@ class Assembler:
                         )
                 self.segments["code"].image = []  # TODO idk
                 self.current_file_index = current_file_index
+                self.comments = []
                 with open(filename) as f:
                     for line in f:
                         self.segments["code"].image.extend(self._assemble_line(line))
@@ -256,6 +257,11 @@ class Assembler:
 
         return instructions, self.segments, symbols
 
+    def get_debug_info(self):
+        debug_info = "".join(self.comments)
+        self.comments = []
+        return debug_info
+
     def _assemble_line(self, line):
         address = len(self.segments["code"].image)  # TODO idk
         tokens = line.split()
@@ -289,41 +295,63 @@ class Assembler:
             else:
                 operand = None
 
-            return [Ins(opcode, operand)]
+            return [Ins(opcode, operand, debug_info=self.get_debug_info())]
 
         elif tokens[0].startswith("CALL"):
             self.current_arg_offset = 0
-            return [Ins(Op.CALL)]
+            return [Ins(Op.CALL, debug_info=self.get_debug_info())]
 
         elif tokens[0].startswith("ARG"):
             self.current_arg_offset += 4
-            return [Ins(Op.ARG, 8 + self.current_arg_offset - 4)]
+            return [
+                Ins(
+                    Op.ARG,
+                    8 + self.current_arg_offset - 4,
+                    debug_info=self.get_debug_info(),
+                )
+            ]
 
         elif tokens[0].startswith("RET"):
-            return [Ins(Op.LEAVE, 8 + self.current_locals + self.current_args)]
+            return [
+                Ins(
+                    Op.LEAVE,
+                    8 + self.current_locals + self.current_args,
+                    debug_info=self.get_debug_info(),
+                )
+            ]
 
         elif tokens[0].startswith("pop"):
-            return [Ins(Op.POP)]
+            return [Ins(Op.POP, debug_info=self.get_debug_info())]
 
         elif tokens[0].startswith("ADDRF"):
             offset = self._parse_expression(tokens[1])
             offset += 16 + self.current_args + self.current_locals
-            return [Ins(Op.LOCAL, offset)]
+            return [Ins(Op.LOCAL, offset, debug_info=self.get_debug_info())]
 
         elif tokens[0].startswith("ADDRL"):
             offset = self._parse_expression(tokens[1]) + 8 + self.current_args
-            return [Ins(Op.LOCAL, offset)]
+            return [Ins(Op.LOCAL, offset, debug_info=self.get_debug_info())]
 
         elif tokens[0] == "proc":
             self._define_symbol(tokens[1], address)
             self.current_locals = align(int(tokens[2]), 4)
             self.current_args = align(int(tokens[3]), 4)
-            return [Ins(Op.ENTER, 8 + self.current_locals + self.current_args)]
+            return [
+                Ins(
+                    Op.ENTER,
+                    8 + self.current_locals + self.current_args,
+                    debug_info=self.get_debug_info(),
+                )
+            ]
 
         elif tokens[0] == "endproc":
             return [
-                Ins(Op.PUSH),
-                Ins(Op.LEAVE, 8 + self.current_locals + self.current_args),
+                Ins(Op.PUSH, debug_info=self.get_debug_info()),
+                Ins(
+                    Op.LEAVE,
+                    8 + self.current_locals + self.current_args,
+                    debug_info=self.get_debug_info(),
+                ),
             ]
 
         elif tokens[0] == "address":
@@ -372,7 +400,8 @@ class Assembler:
             pass
 
         elif tokens[0].startswith(";"):
-            pass
+            comment = line[1:]
+            self.comments.append(comment[comment.index(":") + 1 :])
 
         else:
             self._error("syntax error")
