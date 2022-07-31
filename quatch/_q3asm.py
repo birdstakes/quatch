@@ -168,9 +168,10 @@ class Assembler:
 
                 for section in ("code", "data", "lit", "bss"):
                     if f"{section}_base" in base_map:
-                        self.segments[section] = Segment(
-                            segment_base=base_map[f"{section}_base"]
-                        )
+                        segment_base = base_map[f"{section}_base"]
+                        if section == "data" and segment_base == 0:
+                            segment_base = 4  # q3asm reserves address 0 for nullptrs
+                        self.segments[section] = Segment(segment_base=segment_base)
                     else:
                         seg = old_segs[section]
                         self.segments[section] = Segment(
