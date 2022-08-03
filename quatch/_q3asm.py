@@ -125,9 +125,10 @@ class Segment:
 
 
 class Symbol:
-    def __init__(self, segment, value):
+    def __init__(self, segment, value, type):
         self.segment = segment
         self.value = value
+        self.type = type
 
 
 class AssemblerError(Exception):
@@ -148,8 +149,8 @@ class Assembler:
         # provided symbols should be relative to 0, no matter what code_base
         # and data_base are
         fake_segment = Segment()
-        for sym, value in symbols.items():
-            self.symbols[sym] = Symbol(fake_segment, value)
+        for name, sym in symbols.items():
+            self.symbols[name] = Symbol(fake_segment, sym["value"], sym["type"])
 
         self.current_args = 0
         self.current_locals = 0
@@ -169,9 +170,10 @@ class Assembler:
                 for section in ("code", "data", "lit", "bss"):
                     if f"{section}_base" in base_map:
                         segment_base = base_map[f"{section}_base"]
-                        if section == "data" and segment_base == 0:
-                            segment_base = 4  # q3asm reserves address 0 for nullptrs
                         self.segments[section] = Segment(segment_base=segment_base)
+                        if section == "data" and segment_base == 0:
+                            # q3asm reserves address 0 for nullptrs
+                            self.segments[section].image += b"\x00\x00\x00\x00"
                     else:
                         seg = old_segs[section]
                         self.segments[section] = Segment(
@@ -188,7 +190,10 @@ class Assembler:
 
         # convert symbol values to their actual addresses
         symbols = {
-            name: symbol.value + symbol.segment.segment_base
+            name: {
+                "value": symbol.value + symbol.segment.segment_base,
+                "type": symbol.type,
+            }
             for name, symbol in self.symbols.items()
         }
         return rets, symbols
@@ -446,7 +451,11 @@ class Assembler:
         if name.startswith("$"):
             name += f"_{self.current_file_index}"
 
-        self.symbols[name] = Symbol(self.current_segment, value)
+        self.symbols[name] = Symbol(
+            self.current_segment,
+            value,
+            "code" if self.current_segment == self.segments["code"] else "data",
+        )
         self.last_symbol = self.symbols[name]
 
     def _lookup_symbol(self, name):

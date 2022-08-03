@@ -65,7 +65,12 @@ class Qvm:
         symbols: A dictionary mapping symbol names to addresses.
     """
 
-    def __init__(self, path: str, symbols: Mapping[str, int] = None) -> None:
+    def __init__(
+        self,
+        path: str,
+        code_symbols: Mapping[str, int] = None,
+        data_symbols: Mapping[str, int] = None,
+    ) -> None:
         """Initialize a Qvm from a .qvm file.
 
         A mapping from names to addresses may be provided in symbols. Anything defined
@@ -104,7 +109,15 @@ class Qvm:
             f.seek(0)
             self._original_crc = crc32(f.read())
 
-        self.symbols = dict(symbols or {})
+        self.symbols = {}
+        if code_symbols:
+            for name, value in code_symbols.items():
+                self.symbols[name] = {"value": value, "type": "code"}
+        if data_symbols:
+            for name, value in data_symbols.items():
+                if name in self.symbols:
+                    raise ValueError(f"Symbol {name} already defined")
+                self.symbols[name] = {"value": value, "type": "data"}
 
         self._calls = collections.defaultdict(list)
         for i in range(len(self.instructions) - 1):
@@ -112,7 +125,9 @@ class Qvm:
             if first.opcode == Op.CONST and second.opcode == Op.CALL:
                 self._calls[first.operand].append(i)
 
-    def write(self, path: str, forge_crc: bool = False) -> None:
+    def write(
+        self, path: str, map_path: Optional[str] = None, forge_crc: bool = False
+    ) -> None:
         """Write a .qvm file.
 
         If forge_crc is True, the resulting file will have the same CRC-32 checksum as
@@ -164,6 +179,15 @@ class Qvm:
                     # we'll let forge_crc32 overwrite the first 4 bytes of the data
                     # section since nobody should be using address 0
                     forge_crc32(mm, data_offset, self._original_crc)
+
+        if not map_path:
+            return
+        with open(map_path, "w") as f:
+            for name, sym in self.symbols.items():
+                if name.startswith("$"):
+                    continue
+                value = sym["value"] & 0xFFFFFFFF
+                f.write(f"{0 if sym['type'] == 'code' else 1} {value:8x} {name}\n")
 
     def add_data(self, data: bytes, alignment: int = 4) -> int:
         """Add data to the DATA section and return its address.
@@ -382,6 +406,7 @@ class Qvm:
         for init_name in ("G_InitGame", "CG_Init", "UI_Init"):
             original_init = self.symbols.get(init_name)
             if original_init is not None:
+                original_init = original_init["value"]
                 break
 
         if original_init is None:
@@ -473,10 +498,10 @@ class Qvm:
         Returns the number of calls replaced.
         """
         if isinstance(old, str):
-            old = self.symbols[old]
+            old = self.symbols[old]["value"]
 
         if isinstance(new, str):
-            new = self.symbols[new]
+            new = self.symbols[new]["value"]
 
         for call in self._calls[old]:
             self.instructions[call].operand = new
