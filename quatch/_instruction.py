@@ -134,10 +134,16 @@ class Instruction:
         Instruction(Opcode.CONST, 0x7b)
     """
 
-    def __init__(self, opcode: Opcode, operand: Optional[Operand] = None) -> None:
+    def __init__(
+        self,
+        opcode: Opcode,
+        operand: Optional[Operand] = None,
+        debug_info: Optional[str] = "",
+    ) -> None:
         """Initialize an Instruction from an opcode and operand."""
         self._opcode: Opcode = opcode
         self._operand: Optional[Operand] = None
+        self.debug_info = debug_info
 
         if operand is not None:
             self.operand = operand
@@ -159,6 +165,14 @@ class Instruction:
             return f"{self._opcode.name} {self._operand}"
         else:
             return f"{self._opcode.name} {self._operand:#x}"
+
+    def __eq__(self, other: Instruction) -> bool:
+        def normalize(x):
+            return (x & 0xFFFFFFFF) if type(x) == int and x < 0 else x
+
+        return self.opcode == other.opcode and normalize(self._operand) == normalize(
+            other._operand
+        )
 
     @property
     def opcode(self) -> Opcode:
