@@ -26,7 +26,7 @@ import os
 import struct
 import tempfile
 from collections.abc import Iterable, Mapping
-from typing import Any, NamedTuple, Optional, Union
+from typing import Any, List, NamedTuple, Optional, Union
 from ._compile import compile_c_file, CompilerError
 from ._instruction import assemble, disassemble, Instruction as Ins, Opcode as Op
 from ._memory import Memory, RegionTag
@@ -253,6 +253,7 @@ class Qvm:
         self,
         paths: Iterable[str],
         include_dirs: Optional[Iterable[str]] = None,
+        additional_cflags: Optional[List[str]] = None,
         suppress_missing_symbols: Optional[bool] = False,
     ) -> CompilationResult:
         """Compile C files and add the code to the Qvm.
@@ -277,7 +278,12 @@ class Qvm:
                 asm_file.close()
 
                 output.append(
-                    compile_c_file(path, asm_file.name, include_dirs=include_dirs)
+                    compile_c_file(
+                        path,
+                        asm_file.name,
+                        include_dirs=include_dirs,
+                        additional_args=additional_cflags,
+                    )
                 )
 
             self.memory.align(4)
