@@ -253,6 +253,7 @@ class Qvm:
         self,
         paths: Iterable[str],
         include_dirs: Optional[Iterable[str]] = None,
+        suppress_missing_symbols: Optional[bool] = False,
     ) -> CompilationResult:
         """Compile C files and add the code to the Qvm.
 
@@ -281,7 +282,7 @@ class Qvm:
 
             self.memory.align(4)
 
-            assembler = Assembler()
+            assembler = Assembler(suppress_missing_symbols)
             file_segments, symbols = assembler.my_assemble(
                 [(asm_file.name, *rest) for (asm_file, *rest) in asm_files],
                 symbols=self.symbols,

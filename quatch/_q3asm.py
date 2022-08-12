@@ -136,6 +136,9 @@ class AssemblerError(Exception):
 
 
 class Assembler:
+    def __init__(self, suppress_missing_symbols):
+        self.suppress_missing_symbols = suppress_missing_symbols
+
     def my_assemble(
         self,
         input_files,
@@ -466,6 +469,8 @@ class Assembler:
             name += f"_{self.current_file_index}"
 
         if name not in self.symbols:
+            if self.suppress_missing_symbols:
+                return 0xC0DEDA7A
             self._error(f"symbol {name} undefined")
 
         s = self.symbols[name]
