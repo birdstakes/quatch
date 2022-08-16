@@ -26,17 +26,22 @@ import os
 import struct
 import tempfile
 from collections.abc import Iterable, Mapping
-from typing import Optional, Union
+from typing import Any, List, NamedTuple, Optional, Union
 from ._compile import compile_c_file, CompilerError
 from ._instruction import assemble, disassemble, Instruction as Ins, Opcode as Op
 from ._memory import Memory, RegionTag
-from ._q3asm import Assembler, AssemblerError
+from ._q3asm import Assembler, AssemblerError, Segment
 from ._util import crc32, forge_crc32, pad
 
 
 STACK_SIZE = 0x10000
 HEADER_FORMAT = "<IIIIIIII"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+
+
+class CompilationResult(NamedTuple):
+    output: str
+    segments: dict[str, Segment]
 
 
 class InitSymbolError(Exception):
@@ -60,7 +65,12 @@ class Qvm:
         symbols: A dictionary mapping symbol names to addresses.
     """
 
-    def __init__(self, path: str, symbols: Mapping[str, int] = None) -> None:
+    def __init__(
+        self,
+        path: str,
+        code_symbols: Mapping[str, int] = None,
+        data_symbols: Mapping[str, int] = None,
+    ) -> None:
         """Initialize a Qvm from a .qvm file.
 
         A mapping from names to addresses may be provided in symbols. Anything defined
@@ -73,7 +83,7 @@ class Qvm:
                 code_offset,
                 code_length,
                 data_offset,
-                self._orignal_data_length,
+                self._original_data_length,
                 self._original_lit_length,
                 bss_length,
             ) = struct.unpack(HEADER_FORMAT, f.read(HEADER_SIZE))
@@ -92,14 +102,22 @@ class Qvm:
             bss_length -= STACK_SIZE
 
             f.seek(data_offset)
-            self.add_data(f.read(self._orignal_data_length))
+            self.add_data(f.read(self._original_data_length))
             self.add_lit(f.read(self._original_lit_length))
             self.add_bss(bss_length)
 
             f.seek(0)
             self._original_crc = crc32(f.read())
 
-        self.symbols = dict(symbols or {})
+        self.symbols = {}
+        if code_symbols:
+            for name, value in code_symbols.items():
+                self.symbols[name] = {"value": value, "type": "code"}
+        if data_symbols:
+            for name, value in data_symbols.items():
+                if name in self.symbols:
+                    raise ValueError(f"Symbol {name} already defined")
+                self.symbols[name] = {"value": value, "type": "data"}
 
         self._calls = collections.defaultdict(list)
         for i in range(len(self.instructions) - 1):
@@ -107,7 +125,11 @@ class Qvm:
             if first.opcode == Op.CONST and second.opcode == Op.CALL:
                 self._calls[first.operand].append(i)
 
-    def write(self, path: str, forge_crc: bool = False) -> None:
+        self.local_symbols = {}
+
+    def write(
+        self, path: str, map_path: Optional[str] = None, forge_crc: bool = False
+    ) -> None:
         """Write a .qvm file.
 
         If forge_crc is True, the resulting file will have the same CRC-32 checksum as
@@ -128,12 +150,12 @@ class Qvm:
 
             data_offset = f.tell()
             f.write(
-                self.memory[: self._orignal_data_length + self._original_lit_length]
+                self.memory[: self._original_data_length + self._original_lit_length]
             )
 
             bss_length = (
                 len(self.memory)
-                - self._orignal_data_length
+                - self._original_data_length
                 - self._original_lit_length
                 + STACK_SIZE
             )
@@ -147,7 +169,7 @@ class Qvm:
                     code_offset,
                     len(code),
                     data_offset,
-                    self._orignal_data_length,
+                    self._original_data_length,
                     self._original_lit_length,
                     bss_length,
                 )
@@ -159,6 +181,15 @@ class Qvm:
                     # we'll let forge_crc32 overwrite the first 4 bytes of the data
                     # section since nobody should be using address 0
                     forge_crc32(mm, data_offset, self._original_crc)
+
+        if not map_path:
+            return
+        with open(map_path, "w") as f:
+            for name, sym in self.symbols.items():
+                if name.startswith("$"):
+                    continue
+                value = sym["value"] & 0xFFFFFFFF
+                f.write(f"{0 if sym['type'] == 'code' else 1} {value:8x} {name}\n")
 
     def add_data(self, data: bytes, alignment: int = 4) -> int:
         """Add data to the DATA section and return its address.
@@ -188,16 +219,13 @@ class Qvm:
         return address
 
     def add_c_code(
-        self, code: str, include_dirs: Optional[Iterable[str]] = None
-    ) -> str:
+        self,
+        code: str,
+        **kwargs: Optional[Any],
+    ) -> CompilationResult:
         """Compile a string of C code and add it to the Qvm.
 
-        Additional search paths for include files can be specified in include_dirs.
-
-        Compilation errors will cause a CompilerError exception to be raised with the
-        error message.
-
-        Returns the compiler's standard output/error.
+        See add_c_files for other arguments.
         """
         c_file = tempfile.NamedTemporaryFile(suffix=".c", delete=False)
         try:
@@ -206,29 +234,31 @@ class Qvm:
             # this must be closed on windows or lcc won't be able to open it
             c_file.close()
 
-            return self.add_c_file(c_file.name, include_dirs=include_dirs)
+            return self.add_c_file(c_file.name, **kwargs)
         finally:
             c_file.close()
             with contextlib.suppress(FileNotFoundError):
                 os.remove(c_file.name)
 
     def add_c_file(
-        self, path: str, include_dirs: Optional[Iterable[str]] = None
-    ) -> str:
+        self,
+        path: str,
+        **kwargs: Optional[Any],
+    ) -> CompilationResult:
         """Compile a C file and add the code to the Qvm.
 
-        Additional search paths for include files can be specified in include_dirs.
-
-        Compilation errors will cause a CompilerError exception to be raised with the
-        error message.
-
-        Returns the compiler's standard output/error.
+        See add_c_files for other arguments.
         """
-        return self.add_c_files([path], include_dirs=include_dirs)
+        return self.add_c_files([path], **kwargs)
 
-    def add_c_files(
-        self, paths: Iterable[str], include_dirs: Optional[Iterable[str]] = None
-    ) -> str:
+    def my_add_c_files(
+        self,
+        paths: Iterable[str],
+        include_dirs: Optional[Iterable[str]] = None,
+        additional_cflags: Optional[List[str]] = None,
+        suppress_missing_symbols: Optional[bool] = False,
+        dump_stack: Optional[bool] = False,
+    ) -> CompilationResult:
         """Compile C files and add the code to the Qvm.
 
         Additional search paths for include files can be specified in include_dirs.
@@ -236,7 +266,85 @@ class Qvm:
         Compilation errors will cause a CompilerError exception to be raised with the
         error message.
 
-        Returns the compiler's standard output/error.
+        Returns a CompilationResult with the compiler's standard output/error and
+        segments containing the compiled code and data.
+        """
+        asm_files = []
+        output = []
+
+        try:
+            for (path, *rest) in paths:
+                asm_file = tempfile.NamedTemporaryFile(suffix=".asm", delete=False)
+                asm_files.append((asm_file, *rest))
+
+                # this must be closed on windows or lcc won't be able to open it
+                asm_file.close()
+                if dump_stack:
+                    if additional_cflags:
+                        additional_cflags += ["-Wf-dump-stack"]
+                    else:
+                        additional_cflags = ["-Wf-dump-stack"]
+                output.append(
+                    compile_c_file(
+                        path,
+                        asm_file.name,
+                        include_dirs=include_dirs,
+                        additional_args=additional_cflags,
+                    )
+                )
+
+            self.memory.align(4)
+
+            assembler = Assembler(suppress_missing_symbols)
+            file_segments, symbols = assembler.my_assemble(
+                [(asm_file.name, *rest) for (asm_file, *rest) in asm_files],
+                symbols=self.symbols,
+            )
+            self.local_symbols.update(assembler.local_symbols)
+
+            for segments in file_segments:
+                code_base = segments["code"].segment_base
+                code_data = segments["code"].image
+                self.instructions[code_base : code_base + len(code_data)] = code_data
+
+                for region in ("data", "lit", "bss"):
+                    segment = segments[region]
+                    segment_base, segment_data = segment.segment_base, segment.image
+                    self.memory[
+                        segment_base : segment_base + len(segment_data)
+                    ] = segment_data
+
+            self.symbols.update(symbols)
+            return [CompilationResult(i, x) for i, x in zip(output, file_segments)]
+
+        except AssemblerError as e:
+            raise CompilerError(str(e)) from None
+
+        finally:
+            for (asm_file, *rest) in asm_files:
+                asm_file.close()
+                with contextlib.suppress(FileNotFoundError):
+                    os.remove(asm_file.name)
+
+    def add_c_files(
+        self,
+        paths: Iterable[str],
+        include_dirs: Optional[Iterable[str]] = None,
+        code_base: Optional[int] = None,
+        data_base: Optional[int] = None,
+        bss_base: Optional[int] = None,
+        lit_base: Optional[int] = None,
+        pad_segments: Optional[bool] = True,
+    ) -> CompilationResult:
+        """Compile C files and add the code to the Qvm.
+
+        Additional search paths for include files can be specified in include_dirs.
+
+        Compilation errors will cause a CompilerError exception to be raised with the
+        error message.
+
+        Returns a CompilationResult with the compiler's standard output/error and
+        segments containing the compiled code and data.
         """
         asm_files = []
         output = ""
@@ -256,19 +364,43 @@ class Qvm:
             assembler = Assembler()
             instructions, segments, symbols = assembler.assemble(
                 [asm_file.name for asm_file in asm_files],
-                code_base=len(self.instructions),
-                data_base=len(self.memory),
+                code_base=code_base
+                if code_base is not None
+                else len(self.instructions),
+                data_base=data_base if data_base is not None else len(self.memory),
+                lit_base=lit_base,
+                bss_base=bss_base,
+                pad_segments=pad_segments,
                 symbols=self.symbols,
             )
 
-            self.instructions.extend(instructions)
+            if code_base is not None:
+                self.instructions[
+                    code_base : code_base + len(instructions)
+                ] = instructions
+            else:
+                self.instructions.extend(instructions)
 
-            self.add_data(segments["data"].image)
-            self.add_lit(segments["lit"].image)
-            self.add_bss(len(segments["bss"].image))
+            data = segments["data"].image
+            if data_base is not None:
+                self.memory[data_base : data_base + len(data)] = data
+            else:
+                self.add_data(data)
+
+            lit = segments["lit"].image
+            if lit_base is not None:
+                self.memory[lit_base : lit_base + len(lit)] = lit
+            else:
+                self.add_lit(lit)
+
+            bss = segments["bss"].image
+            if bss_base is not None:
+                self.memory[bss_base : bss_base + len(bss)] = bss
+            else:
+                self.add_bss(len(bss))
 
             self.symbols.update(symbols)
-            return output
+            return CompilationResult(output, instructions, segments)
 
         except AssemblerError as e:
             raise CompilerError(str(e)) from None
@@ -280,9 +412,16 @@ class Qvm:
                     os.remove(asm_file.name)
 
     def _add_data_init_code(self) -> None:
+        if (
+            len(list(self.memory.regions_with_tag(RegionTag.DATA))) == 1
+            and len(list(self.memory.regions_with_tag(RegionTag.LIT))) == 1
+        ):
+            return
+
         for init_name in ("G_InitGame", "CG_Init", "UI_Init"):
             original_init = self.symbols.get(init_name)
             if original_init is not None:
+                original_init = original_init["value"]
                 break
 
         if original_init is None:
@@ -304,7 +443,7 @@ class Qvm:
             begin, end = region.begin, region.end
 
             # skip .qvm's data section
-            if (begin, end) == (0, self._orignal_data_length):
+            if (begin, end) == (0, self._original_data_length):
                 continue
 
             for address in range(begin, end, 4):
@@ -324,8 +463,8 @@ class Qvm:
 
             # skip .qvm's lit section
             if (begin, end) == (
-                self._orignal_data_length,
-                self._orignal_data_length + self._original_lit_length,
+                self._original_data_length,
+                self._original_data_length + self._original_lit_length,
             ):
                 continue
 
@@ -374,10 +513,10 @@ class Qvm:
         Returns the number of calls replaced.
         """
         if isinstance(old, str):
-            old = self.symbols[old]
+            old = self.symbols[old]["value"]
 
         if isinstance(new, str):
-            new = self.symbols[new]
+            new = self.symbols[new]["value"]
 
         for call in self._calls[old]:
             self.instructions[call].operand = new

@@ -52,7 +52,7 @@ class Memory:
         if isinstance(key, int):
             key = self._check_index(key)
             region = self.region_at(key)
-            if region is None or region.contents is None:
+            if region.contents is None:
                 return 0
             else:
                 return region.contents[key - region.begin]
@@ -60,20 +60,13 @@ class Memory:
         elif isinstance(key, slice):
             key = self._check_slice(key)
             result = bytearray()
-            position = key.start
             for region in self.regions_overlapping(key.start, key.stop):
-                # gaps caused by align() should be filled with zeros
-                result.extend(b"\x00" * (region.begin - position))
-                position = region.end
-
                 begin = max(0, key.start - region.begin)
                 end = region.size - max(0, (region.end - key.stop))
                 if region.contents is None:
                     result.extend(b"\x00" * (end - begin))
                 else:
                     result.extend(region.contents[begin:end])
-
-            result.extend(b"\x00" * (key.stop - position))
             return result
 
         else:
@@ -96,8 +89,9 @@ class Memory:
         if isinstance(key, int):
             key = self._check_index(key)
             region = self.region_at(key)
-            if region is None or region.contents is None:
-                raise IndexError("cannot assign to padding or BSS")
+            if region.contents is None:
+                if value != 0:
+                    raise ValueError("cannot assign nonzero data to BSS")
             else:
                 region.contents[key - region.begin] = value
 
@@ -109,33 +103,17 @@ class Memory:
             if key.stop <= key.start:
                 return
 
-            regions = self.regions_overlapping(key.start, key.stop)
-            writable = True
-
-            # check for gaps between key.start and key.stop
-            position = key.start
-            for region in regions:
-                if region.begin > position or region.contents is None:
-                    break
-                position = region.end
-
-            if position < key.stop:
-                writable = False
-
-            # if there were no regions found and the slice isn't empty then the whole
-            # thing is padding
-            if len(regions) == 0 and key.start < key.stop:
-                writable = False
-
-            if not writable:
-                raise IndexError("cannot assign to padding or BSS")
-
-            for region in regions:
+            for region in self.regions_overlapping(key.start, key.stop):
                 src_begin = max(0, region.begin - key.start)
                 src_end = min(len(value), region.end - key.start)
                 dst_begin = max(0, key.start - region.begin)
                 dst_end = min(region.size, key.stop - region.begin)
-                region.contents[dst_begin:dst_end] = value[src_begin:src_end]
+                data = value[src_begin:src_end]
+                if region.tag == RegionTag.BSS:
+                    if not all(byte == 0 for byte in data):
+                        raise ValueError("cannot assign nonzero data to BSS")
+                else:
+                    region.contents[dst_begin:dst_end] = data
 
         else:
             raise TypeError("indices must be integers or slices")
@@ -213,7 +191,9 @@ class Memory:
 
         Does nothing if len(self) is already a multiple of alignment.
         """
-        self._size = align(self._size, alignment)
+        padding_size = align(self._size, alignment) - self._size
+        if padding_size != 0:
+            self.add_region(RegionTag.BSS, size=padding_size)
 
     def regions_with_tag(self, tag: RegionTag) -> Iterator[Region]:
         """Find all regions with a given tag."""

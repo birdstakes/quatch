@@ -1,6 +1,7 @@
 #include "c.h"
 #define I(f) b_##f
 
+static int dump_stack = 0;
 
 static void I(segment)(int n) {
 	static int cseg;
@@ -219,9 +220,15 @@ static void I(local)(Symbol p) {
 	p->x.name = stringf("%d", offset);
 	p->x.offset = offset;
 	offset += p->type->size;
+	if (dump_stack) print("local %s %s %f\n", p->x.name, p->name, p->ref);
 }
 
-static void I(progbeg)(int argc, char *argv[]) {}
+static void I(progbeg)(int argc, char *argv[]) {
+	int i;
+	for (i = 0; i < argc; i++) {
+		if (!strcmp(argv[i], "-dump-stack")) dump_stack = 1;
+	}
+}
 
 static void I(progend)(void) {}
 

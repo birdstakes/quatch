@@ -22,7 +22,7 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from typing import Iterable, Optional
+from typing import Iterable, List, Optional
 
 
 class CompilerError(Exception):
@@ -30,7 +30,10 @@ class CompilerError(Exception):
 
 
 def compile_c_file(
-    input_path: str, output_path: str, include_dirs: Optional[Iterable[str]] = None
+    input_path: str,
+    output_path: str,
+    include_dirs: Optional[Iterable[str]] = None,
+    additional_args: Optional[List[str]] = None,
 ) -> str:
     """Compile C code into lcc bytecode.
 
@@ -54,6 +57,8 @@ def compile_c_file(
         "-Wf-target=bytecode",
         "-Wf-g",
     ]
+    if additional_args is not None:
+        command += additional_args
     if include_dirs is not None:
         command += [f"-I{include_dir}" for include_dir in include_dirs]
     command += ["-o", output_path, input_path]
