@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with Quatch; If not, see <https://www.gnu.org/licenses/>.
 
+from collections import namedtuple
 from ._instruction import Instruction as Ins, Opcode as Op
 from ._util import align, pad
 
@@ -131,13 +132,21 @@ class Symbol:
         self.type = type
 
 
+LocalSymbol = namedtuple("LocalSymbol", ["name", "refinc"])
+
+
 class AssemblerError(Exception):
     pass
 
 
+FRAME_EXTRA_SIZE = 8
+
+
 class Assembler:
-    def __init__(self, suppress_missing_symbols):
+    def __init__(self, suppress_missing_symbols=False):
         self.suppress_missing_symbols = suppress_missing_symbols
+        self._locals = {}
+        self.local_symbols = {}
 
     def my_assemble(
         self,
@@ -338,13 +347,16 @@ class Assembler:
             return [Ins(Op.LOCAL, offset, debug_info=self.get_debug_info())]
 
         elif tokens[0].startswith("ADDRL"):
-            offset = self._parse_expression(tokens[1]) + 8 + self.current_args
+            offset = (
+                self._parse_expression(tokens[1]) + FRAME_EXTRA_SIZE + self.current_args
+            )
             return [Ins(Op.LOCAL, offset, debug_info=self.get_debug_info())]
 
         elif tokens[0] == "proc":
             self._define_symbol(tokens[1], address)
             self.current_locals = align(int(tokens[2]), 4)
             self.current_args = align(int(tokens[3]), 4)
+            self._store_locals(address)
             return [
                 Ins(
                     Op.ENTER,
@@ -414,6 +426,9 @@ class Assembler:
             comment = line[1:]
             self.comments.append(comment[comment.index(":") + 1 :])
 
+        elif tokens[0] == "local":
+            self._remember_local(int(tokens[1]), tokens[2], float(tokens[3]))
+
         else:
             self._error("syntax error")
 
@@ -475,6 +490,21 @@ class Assembler:
 
         s = self.symbols[name]
         return s.segment.segment_base + s.value
+
+    def _store_locals(self, address):
+        if self.pass_number == 1:
+            self.local_symbols[self.current_segment.segment_base + address] = {
+                k + FRAME_EXTRA_SIZE + self.current_args: v
+                for k, v in self._locals.items()
+            }
+            self._locals = {}
+
+    def _remember_local(self, offset, name, ref_inc):
+        if self.pass_number == 1 and self.current_segment == self.segments["code"]:
+            if offset in self._locals:
+                self._locals[offset].append(LocalSymbol(name, ref_inc))
+            else:
+                self._locals[offset] = [LocalSymbol(name, ref_inc)]
 
     def _hack_to_segment(self, segment):
         if self.current_segment != segment:

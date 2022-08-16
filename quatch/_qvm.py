@@ -125,6 +125,8 @@ class Qvm:
             if first.opcode == Op.CONST and second.opcode == Op.CALL:
                 self._calls[first.operand].append(i)
 
+        self.local_symbols = {}
+
     def write(
         self, path: str, map_path: Optional[str] = None, forge_crc: bool = False
     ) -> None:
@@ -255,6 +257,7 @@ class Qvm:
         include_dirs: Optional[Iterable[str]] = None,
         additional_cflags: Optional[List[str]] = None,
         suppress_missing_symbols: Optional[bool] = False,
+        dump_stack: Optional[bool] = False,
     ) -> CompilationResult:
         """Compile C files and add the code to the Qvm.
 
@@ -276,7 +279,11 @@ class Qvm:
 
                 # this must be closed on windows or lcc won't be able to open it
                 asm_file.close()
-
+                if dump_stack:
+                    if additional_cflags:
+                        additional_cflags += ["-Wf-dump-stack"]
+                    else:
+                        additional_cflags = ["-Wf-dump-stack"]
                 output.append(
                     compile_c_file(
                         path,
@@ -293,6 +300,7 @@ class Qvm:
                 [(asm_file.name, *rest) for (asm_file, *rest) in asm_files],
                 symbols=self.symbols,
             )
+            self.local_symbols.update(assembler.local_symbols)
 
             for segments in file_segments:
                 code_base = segments["code"].segment_base
