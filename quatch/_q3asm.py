@@ -281,7 +281,9 @@ class Assembler:
                 self._hack_to_segment(self.segments["lit"])
             elif size == 4:
                 self._hack_to_segment(self.segments["data"])
-            self.current_segment.image += value.to_bytes(size, "little")
+            self.current_segment.image += value.to_bytes(
+                size, "little", signed=(value < 0)
+            )
 
         elif tokens[0].startswith("LABEL"):
             if self.current_segment == self.segments["code"]:
