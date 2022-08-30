@@ -30,11 +30,16 @@ class CompilerError(Exception):
 
 
 def compile_c_file(
-    input_path: str, output_path: str, include_dirs: Optional[Iterable[str]] = None
+    input_path: str,
+    output_path: str,
+    include_dirs: Optional[Iterable[str]] = None,
+    cflags: Optional[Iterable[str]] = None,
 ) -> str:
     """Compile C code into lcc bytecode.
 
     Additional search paths for include files can be specified in include_dirs.
+
+    Additional cflags can be specified in cflags.
 
     Compilation errors will cause a CompilerError exception to be raised with the
     error message.
@@ -54,6 +59,8 @@ def compile_c_file(
         "-Wf-target=bytecode",
         "-Wf-g",
     ]
+    if cflags is not None:
+        command += list(cflags)
     if include_dirs is not None:
         command += [f"-I{include_dir}" for include_dir in include_dirs]
     command += ["-o", output_path, input_path]

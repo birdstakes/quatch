@@ -213,25 +213,35 @@ class Qvm:
                 os.remove(c_file.name)
 
     def add_c_file(
-        self, path: str, include_dirs: Optional[Iterable[str]] = None
+        self,
+        path: str,
+        include_dirs: Optional[Iterable[str]] = None,
+        cflags: Optional[Iterable[str]] = None,
     ) -> str:
         """Compile a C file and add the code to the Qvm.
 
         Additional search paths for include files can be specified in include_dirs.
+
+        Additional cflags can be specified in cflags.
 
         Compilation errors will cause a CompilerError exception to be raised with the
         error message.
 
         Returns the compiler's standard output/error.
         """
-        return self.add_c_files([path], include_dirs=include_dirs)
+        return self.add_c_files([path], include_dirs=include_dirs, cflags=cflags)
 
     def add_c_files(
-        self, paths: Iterable[str], include_dirs: Optional[Iterable[str]] = None
+        self,
+        paths: Iterable[str],
+        include_dirs: Optional[Iterable[str]] = None,
+        cflags: Optional[Iterable[str]] = None,
     ) -> str:
         """Compile C files and add the code to the Qvm.
 
         Additional search paths for include files can be specified in include_dirs.
+
+        Additional cflags can be specified in cflags.
 
         Compilation errors will cause a CompilerError exception to be raised with the
         error message.
@@ -249,7 +259,9 @@ class Qvm:
                 # this must be closed on windows or lcc won't be able to open it
                 asm_file.close()
 
-                output += compile_c_file(path, asm_file.name, include_dirs=include_dirs)
+                output += compile_c_file(
+                    path, asm_file.name, include_dirs=include_dirs, cflags=cflags
+                )
 
             self.memory.align(4)
 
