@@ -37,6 +37,7 @@ from ._util import crc32, forge_crc32, pad
 STACK_SIZE = 0x10000
 HEADER_FORMAT = "<IIIIIIII"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)
+VM_MAGIC = 0x12721444
 
 
 class InitSymbolError(Exception):
@@ -60,12 +61,28 @@ class Qvm:
         symbols: A dictionary mapping symbol names to addresses.
     """
 
-    def __init__(self, path: str, symbols: Mapping[str, int] = None) -> None:
-        """Initialize a Qvm from a .qvm file.
+    def __init__(
+        self, path: Optional[str] = None, symbols: Optional[Mapping[str, int]] = None
+    ) -> None:
+        """Initialize a Qvm from a .qvm file or create an empty one if no path is
+        provided.
 
         A mapping from names to addresses may be provided in symbols. Anything defined
         here will be available from C code added with self.add_c_code.
         """
+        if path is None:
+            self.vm_magic = VM_MAGIC
+            self._original_data_length = 0
+            self._original_lit_length = 0
+            self.instructions = []
+            self.memory = Memory()
+            self._original_crc = 0
+            self.symbols = {}
+            self._fresh = True
+            return
+        else:
+            self._fresh = False
+
         with open(path, "rb") as f:
             (
                 self.vm_magic,
@@ -73,7 +90,7 @@ class Qvm:
                 code_offset,
                 code_length,
                 data_offset,
-                self._orignal_data_length,
+                self._original_data_length,
                 self._original_lit_length,
                 bss_length,
             ) = struct.unpack(HEADER_FORMAT, f.read(HEADER_SIZE))
@@ -92,7 +109,7 @@ class Qvm:
             bss_length -= STACK_SIZE
 
             f.seek(data_offset)
-            self.add_data(f.read(self._orignal_data_length))
+            self.add_data(f.read(self._original_data_length))
             self.add_lit(f.read(self._original_lit_length))
             self.add_bss(bss_length)
 
@@ -101,11 +118,7 @@ class Qvm:
 
         self.symbols = dict(symbols or {})
 
-        self._calls = collections.defaultdict(list)
-        for i in range(len(self.instructions) - 1):
-            first, second = self.instructions[i : i + 2]
-            if first.opcode == Op.CONST and second.opcode == Op.CALL:
-                self._calls[first.operand].append(i)
+        self._find_calls()
 
     def write(self, path: str, forge_crc: bool = False) -> None:
         """Write a .qvm file.
@@ -117,7 +130,41 @@ class Qvm:
         UI_Init functions. An InitSymbolError exception will be raised if a valid symbol
         for one of these functions cannot be found.
         """
-        self._add_data_init_code()
+        if self._fresh:
+            # If the user decides to do something weird like create a fresh qvm and
+            # call add_c_code multiple times, data init code will be needed and we'll
+            # have to hook their newly added G_InitGame, CG_Init, or UI_Init.
+            self._find_calls()
+
+            # TODO this should probably work even for existing qvms, negating the need
+            # to save original data and lit lengths at all
+            data_regions = list(self.memory.regions_with_tag(RegionTag.DATA))
+            if len(data_regions) != 0 and data_regions[0].begin == 0:
+                self._original_data_length = data_regions[0].size
+
+            lit_regions = list(self.memory.regions_with_tag(RegionTag.LIT))
+            if (
+                len(lit_regions) != 0
+                and lit_regions[0].begin == self._original_data_length
+            ):
+                self._original_lit_length = lit_regions[0].size
+
+        def need_data_init():
+            tags = [RegionTag.DATA, RegionTag.LIT, RegionTag.BSS]
+
+            addr = 0
+            for tag in tags:
+                regions = list(self.memory.regions_with_tag(tag))
+                if len(regions) == 0:
+                    continue
+                if len(regions) > 1 or regions[0].begin != addr:
+                    return True
+                addr = regions[0].end
+
+            return False
+
+        if need_data_init():
+            self._add_data_init_code()
 
         with open(path, "w+b") as f:
             f.seek(HEADER_SIZE)
@@ -128,12 +175,12 @@ class Qvm:
 
             data_offset = f.tell()
             f.write(
-                self.memory[: self._orignal_data_length + self._original_lit_length]
+                self.memory[: self._original_data_length + self._original_lit_length]
             )
 
             bss_length = (
                 len(self.memory)
-                - self._orignal_data_length
+                - self._original_data_length
                 - self._original_lit_length
                 + STACK_SIZE
             )
@@ -147,7 +194,7 @@ class Qvm:
                     code_offset,
                     len(code),
                     data_offset,
-                    self._orignal_data_length,
+                    self._original_data_length,
                     self._original_lit_length,
                     bss_length,
                 )
@@ -316,7 +363,7 @@ class Qvm:
             begin, end = region.begin, region.end
 
             # skip .qvm's data section
-            if (begin, end) == (0, self._orignal_data_length):
+            if (begin, end) == (0, self._original_data_length):
                 continue
 
             for address in range(begin, end, 4):
@@ -336,8 +383,8 @@ class Qvm:
 
             # skip .qvm's lit section
             if (begin, end) == (
-                self._orignal_data_length,
-                self._orignal_data_length + self._original_lit_length,
+                self._original_data_length,
+                self._original_data_length + self._original_lit_length,
             ):
                 continue
 
@@ -376,6 +423,13 @@ class Qvm:
         # only hook the first call site in case there are multiple (this should be the
         # one called from vmMain when the qvm is first loaded)
         self.instructions[original_init_call].operand = init_wrapper
+
+    def _find_calls(self):
+        self._calls = collections.defaultdict(list)
+        for i in range(len(self.instructions) - 1):
+            first, second = self.instructions[i : i + 2]
+            if first.opcode == Op.CONST and second.opcode == Op.CALL:
+                self._calls[first.operand].append(i)
 
     def replace_calls(self, old: Union[str, int], new: Union[str, int]) -> int:
         """Replace calls to old with calls to new.
