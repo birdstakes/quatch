@@ -37,6 +37,7 @@ rcc = Extension(
 class build_ext(_build_ext):
     def run(self):
         from distutils.ccompiler import new_compiler, CCompiler
+        from distutils.sysconfig import customize_compiler
 
         compiler = new_compiler(
             compiler=self.compiler,
@@ -44,6 +45,7 @@ class build_ext(_build_ext):
             dry_run=self.dry_run,
             force=self.force,
         )
+        customize_compiler(compiler)
 
         macros = [("WIN32", None)] if WINDOWS else []
 
