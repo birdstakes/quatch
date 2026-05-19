@@ -42,7 +42,6 @@ class build_ext(_build_ext):
         compiler = new_compiler(
             compiler=self.compiler,
             verbose=self.verbose,
-            dry_run=self.dry_run,
             force=self.force,
         )
         customize_compiler(compiler)
