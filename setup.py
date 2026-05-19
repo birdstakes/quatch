@@ -4,6 +4,7 @@ import sys
 from glob import glob
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext as _build_ext
+from setuptools.command.bdist_wheel import bdist_wheel as _bdist_wheel
 
 # This abuses build_ext to build executables instead of extension modules because it
 # already does most of what we need and a bunch of things (bdist_* commands, for
@@ -90,7 +91,6 @@ class build_ext(_build_ext):
 cmdclass = {"build_ext": build_ext}
 
 try:
-    from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
     class bdist_wheel(_bdist_wheel):
         def get_tag(self):
