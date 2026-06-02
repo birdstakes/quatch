@@ -166,8 +166,6 @@ class Instruction:
 
     @property
     def operand(self) -> Operand:
-        if self._operand is None:
-            raise AttributeError(f"{self._opcode.name} does not have an operand")
         return self._operand
 
     @operand.setter
