@@ -58,6 +58,7 @@ opcode_map = {
     "CVUI4": Op.IGNORE,
     "CVUP4": Op.IGNORE,
     "CVUU4": Op.IGNORE,
+    "CVUU2": Op.IGNORE,
     "CVUU1": Op.IGNORE,
     "NEGF4": Op.NEGF,
     "NEGI4": Op.NEGI,
