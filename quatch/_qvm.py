@@ -395,3 +395,30 @@ class Qvm:
             self.instructions[call].operand = new
 
         return len(self._calls[old])
+
+    def replace_instructions(
+        self, offset: Union[str, int], old: list[Ins], new: list[Ins]
+    ):
+        """Replace old instructions at offset with new.
+
+        The offset can be provided as an adddress or name. If it is a name it'll be
+        looked up in self.symbols.
+
+        ValueError will be raised if the old and new lengths don't match or if the
+        instructions at offset don't match old. IndexError will be raised if the
+        replacement range goes out of bounds.
+        """
+        if len(old) != len(new):
+            raise ValueError("New must be same length as old")
+
+        if isinstance(offset, str):
+            offset = self.symbols[offset]
+
+        end_offset = offset + len(old)
+        if len(self.instructions) < end_offset:
+            raise IndexError("Replacement range out of bounds")
+
+        if self.instructions[offset:end_offset] != old:
+            raise ValueError("Instructions at specified offset don't match old")
+
+        self.instructions[offset:end_offset] = new

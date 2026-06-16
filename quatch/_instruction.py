@@ -144,6 +144,9 @@ class Instruction:
         elif operand_sizes[opcode] != 0:
             raise TypeError(f"{opcode.name} requires an operand")
 
+    def __eq__(self, value):
+        return isinstance(value, type(self)) and self.assemble() == value.assemble()
+
     def __repr__(self) -> str:
         if self._operand is None:
             return f"Instruction({self._opcode!s})"
